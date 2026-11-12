@@ -16,6 +16,8 @@ Rundenbasiertes Panzer-Artillerie-Spiel für 2–6 Spieler – komplett im Brows
 
 Bricht beim Gastgeber etwas ab (Tab zu, Absturz), auf der Seite im Hauptmenü **FORTSETZEN** klicken: Das Gefecht geht mit demselben Raumcode weiter, die Mitspieler verbinden sich automatisch neu.
 
+Die Verbindung läuft über einen öffentlichen Internet-Server (MQTT) – das klappt in jedem Netz, auch wenn jeder zu Hause sitzt. Ist der Server nicht erreichbar, wird automatisch eine Direktverbindung (WebRTC) versucht.
+
 ## Probleme?
 
 | Problem | Lösung |
@@ -34,4 +36,4 @@ Bricht beim Gastgeber etwas ab (Tab zu, Absturz), auf der Seite im Hauptmenü **
 ## Technik
 
 Reines HTML/CSS/JavaScript, keine Abhängigkeiten außer [PeerJS](https://peerjs.com) (MIT, liegt unter `js/`).
-`js/sim.js` = Spiellogik inkl. KI (läuft beim Gastgeber), `js/game.js` = Darstellung & Steuerung, `js/net.js` = Verbindung, `js/sound.js` = Geräusche.
+`js/sim.js` = Spiellogik inkl. KI (läuft beim Gastgeber), `js/game.js` = Darstellung & Steuerung, `js/net.js` + `js/relay.js` = Verbindung, `js/sound.js` = Geräusche.

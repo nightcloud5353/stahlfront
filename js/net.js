@@ -1,4 +1,6 @@
-// STAHLFRONT – Netzwerk über WebRTC (PeerJS). Der Gastgeber-Browser betreibt die Simulation.
+// STAHLFRONT – Netzwerk. Der Gastgeber-Browser betreibt die Simulation.
+// 1. Wahl: Internet-Server (relay.js) – funktioniert in jedem Netz.
+// Notlösung: Direktverbindung zwischen den Browsern (WebRTC über PeerJS).
 (function (root) {
   'use strict';
   const S = root.SHARED;
@@ -14,7 +16,14 @@
   // Optional eigener PeerJS-Server (nur für Tests): ?peerhost=localhost&peerport=9000
   function peerOptions() {
     const q = new URLSearchParams(location.search);
-    const o = { debug: 0 };
+    const o = {
+      debug: 0,
+      config: { iceServers: [
+        { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+        { urls: 'stun:stun.cloudflare.com:3478' },
+        { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' },
+      ] },
+    };
     if (q.get('peerhost')) {
       o.host = q.get('peerhost');
       o.port = Number(q.get('peerport') || 9000);
@@ -47,7 +56,7 @@
     const sim = new root.StahlSim();
     if (resume) sim.restore(resume);
     const link = makeLink();
-    let peer = null, code = null, destroyed = false;
+    let peer = null, relay = null, code = null, destroyed = false, ready = false, relayDead = false, peerDead = false;
 
     // Lokale Verbindung (Gastgeber spielt selbst mit)
     const localConn = {
@@ -56,12 +65,19 @@
     };
     sim.onConnect(localConn);
     link.send = (m) => Promise.resolve().then(() => sim.onMessage(localConn, m));
-    link.close = () => { destroyed = true; sim.destroy(); if (peer) peer.destroy(); };
+    link.close = () => { destroyed = true; sim.destroy(); if (relay) relay.close(); if (peer) peer.destroy(); };
+
+    const fireReady = () => { if (ready || destroyed) return; ready = true; sim.code = code; if (cb.onReady) cb.onReady(code, link); };
+    const bothDead = () => { if (!ready && relayDead && peerDead && cb.onError) cb.onError('Keine Verbindung zum Internet. Hat das WLAN bzw. der Hotspot Internet?'); };
 
     function attempt() {
       code = resume ? resume.code : randomCode();
+      relayDead = false; peerDead = false;
+      // 1. Wahl: Internet-Server
+      relay = root.RELAY.host(code, sim, { onReady: fireReady, onFail: () => { relayDead = true; bothDead(); } });
+      // Notlösung: Direktverbindung
       peer = new root.Peer(S.PEER_PREFIX + code, peerOptions());
-      peer.on('open', () => { sim.code = code; cb.onReady && cb.onReady(code, link); });
+      peer.on('open', fireReady);
       peer.on('connection', (dc) => {
         const conn = {
           send(m) { try { if (dc.open) dc.send(m); } catch (e) { /* weg */ } },
@@ -75,61 +91,90 @@
         dc.on('error', bye);
         if (dc.peerConnection) {
           dc.peerConnection.addEventListener('iceconnectionstatechange', () => {
-            const s = dc.peerConnection.iceConnectionState;
-            if (s === 'failed' || s === 'closed') bye();
+            const st = dc.peerConnection.iceConnectionState;
+            if (st === 'failed' || st === 'closed') bye();
           });
         }
       });
-      peer.on('disconnected', () => { if (!destroyed) setTimeout(() => { try { if (!peer.destroyed) peer.reconnect(); } catch (e) { /* egal */ } }, 1500); });
+      peer.on('disconnected', () => { if (!destroyed && !peerDead) setTimeout(() => { try { if (!peer.destroyed) peer.reconnect(); } catch (e) { /* egal */ } }, 1500); });
       peer.on('error', (e) => {
-        if (e.type === 'unavailable-id') {
-          // beim Fortsetzen ist der alte Raum evtl. noch kurz belegt -> mit demselben Code erneut versuchen
-          if (resume && tries++ < 15) { peer.destroy(); cb.onWarn && cb.onWarn('Raum ' + code + ' wird noch freigegeben …'); setTimeout(attempt, 2000); return; }
-          if (!resume && tries++ < 5) { peer.destroy(); attempt(); return; }
+        if (e.type === 'unavailable-id' && !ready) {
+          // Code schon belegt (oder beim Fortsetzen noch nicht freigegeben) -> neu versuchen
+          relay.close(); peer.destroy();
+          if (resume && tries++ < 15) { if (cb.onWarn) cb.onWarn('Raum ' + code + ' wird noch freigegeben …'); setTimeout(attempt, 2000); return; }
+          if (!resume && tries++ < 5) { attempt(); return; }
         }
         if (e.type === 'peer-unavailable') return;
-        if (!code || !peer.open) cb.onError && cb.onError(errText(e));
-        else cb.onWarn && cb.onWarn(errText(e));
+        if (!peer.open) { peerDead = true; bothDead(); }
       });
     }
     attempt();
     return { sim, link, getCode: () => code };
   }
 
-  // ---------- Mitspieler ----------
-  function join(rawCode, cb) {
-    const code = normCode(rawCode);
+  // ---------- Mitspieler: Direktverbindung (Notlösung) ----------
+  function directJoin(code, cb) {
     const link = makeLink();
     let peer = null, dc = null, opened = false, closed = false;
     const fail = (msg) => {
       if (closed) return;
       closed = true;
       try { if (peer) peer.destroy(); } catch (e) { /* egal */ }
-      if (opened) { link.onclose && link.onclose(msg); } else cb.onError && cb.onError(msg);
+      if (opened) { if (link.onclose) link.onclose(msg); } else if (cb.onError) cb.onError(msg);
     };
     peer = new root.Peer(undefined, peerOptions());
-    const timer = setTimeout(() => { if (!opened) fail('Zeitüberschreitung. Ist der Gastgeber noch online und im selben WLAN?'); }, 15000);
     peer.on('open', () => {
       dc = peer.connect(S.PEER_PREFIX + code, { reliable: true, serialization: 'json' });
       dc.on('open', () => {
-        opened = true; clearTimeout(timer);
+        opened = true;
         link.send = (m) => { try { if (dc.open) dc.send(m); } catch (e) { /* weg */ } };
         link.close = () => { closed = true; try { peer.destroy(); } catch (e) { /* egal */ } };
-        cb.onReady && cb.onReady(code, link);
+        if (cb.onReady) cb.onReady(code, link);
       });
       dc.on('data', (m) => { if (link.onmessage) link.onmessage(m); });
       dc.on('close', () => fail('Verbindung zum Gastgeber getrennt.'));
       dc.on('error', () => fail('Verbindung zum Gastgeber getrennt.'));
       if (dc.peerConnection) {
         dc.peerConnection.addEventListener('iceconnectionstatechange', () => {
-          const s = dc.peerConnection.iceConnectionState;
-          if (s === 'failed') fail(opened ? 'Verbindung zum Gastgeber verloren.' : 'Direktverbindung fehlgeschlagen.');
+          if (dc.peerConnection.iceConnectionState === 'failed') fail(opened ? 'Verbindung zum Gastgeber verloren.' : 'Direktverbindung fehlgeschlagen.');
         });
       }
     });
     peer.on('error', (e) => fail(errText(e)));
-    peer.on('disconnected', () => { /* Vermittlung weg ist egal, solange die Direktverbindung steht */ });
-    return { link, code };
+    return { link, cancel() { cb.onError = null; cb.onReady = null; closed = true; try { peer.destroy(); } catch (e) { /* egal */ } } };
+  }
+
+  // ---------- Mitspieler: erst Internet-Server, nach 6 s zusätzlich die Direktverbindung ----------
+  function join(rawCode, cb) {
+    const code = normCode(rawCode);
+    let settled = false, rj = null, dj = null, relayErr = null, directErr = null;
+    const q = new URLSearchParams(location.search);
+    const stop = () => { clearTimeout(t1); clearTimeout(t2); };
+    const win = (c, l) => {
+      if (settled) { try { l.close(); } catch (e) { /* egal */ } return; }
+      settled = true; stop();
+      if (rj && rj.link !== l) rj.cancel();
+      if (dj && dj.link !== l) dj.cancel();
+      if (cb.onReady) cb.onReady(c, l);
+    };
+    const lose = (msg) => {
+      if (settled) return;
+      settled = true; stop();
+      if (rj) rj.cancel();
+      if (dj) dj.cancel();
+      if (cb.onError) cb.onError(msg);
+    };
+    const startDirect = () => {
+      if (dj || settled || q.has('noDirect')) return;
+      dj = directJoin(code, { onReady: win, onError: (m) => { directErr = m; if (relayErr) lose(m); else setTimeout(() => lose(m), 3000); } });
+    };
+    rj = root.RELAY.join(code, {
+      onReady: win,
+      onError: (m) => { relayErr = m; if (directErr) lose(directErr); else startDirect(); },
+    });
+    const t1 = setTimeout(startDirect, 6000);
+    const t2 = setTimeout(() => lose('Kein Spiel mit diesem Code erreichbar. Code richtig? Ist die Seite beim Gastgeber noch offen?'), 22000);
+    return { code };
   }
 
   root.NET = { host, join, normCode };
