@@ -31,6 +31,11 @@
   const FIRE_ROUNDS = 2;       // so viele Runden brennt Napalm
   const FLAMES = 9;            // Brandtropfen pro Napalm
   const C4_FUSE = 50;          // Ticks Piepen, bevor die Sprengladung hochgeht
+  const SLIDE_THIN = 12;       // Überhänge bis zu dieser Dicke brechen nach einer Explosion ab
+  const SLIDE_SPAN_TH = 32;    // dickere Decken tragen sich immer selbst
+  const SLIDE_CHUNK = 700;    // lose Erdbrocken bis zu dieser Größe (Pixel) fallen herunter
+  const SLIDE_MAX = 9000;      // Obergrenze rutschender Pixel pro Explosion
+  const GRAIN = 3;             // Erde zerfällt in Brocken von 3×3 Pixeln
   const SAVE_KEY = 'sf_save';
   const BOARD_KEY = 'sf_board';
 
@@ -251,7 +256,7 @@
         input: noInput(), hold: { u: 0, d: 0, pu: 0, pd: 0 },
         driveV: 0, burst: null, turnCount: 0, waterY: H - 62, settleT: 0, waterRaised: false, out: [], fired: false,
         objs: [], chain: [], moved: false, stats: null, crateDone: false, sinceCrate: 0, bot: null, turnHit: false, sayQ: [], lastLine: {}, firedMode: '',
-        fires: [], burnDone: false, c4Done: false,
+        fires: [], burnDone: false, c4Done: false, slides: [],
       };
       this.phase = 'game';
       this.genTerrain(map);
@@ -1011,6 +1016,7 @@
         g.chain = g.chain.filter((c) => c.at > this.tickN);
         for (const c of due) { const [r, d, k] = BOOM[c.kind]; this.explode(c.x, c.y, r, d, k, c.kind, c.src); }
       }
+      if (g.slides.length) this.updateSlides();
       if (g.winch && g.active) this.updateWinch();
       for (const t of g.tanks) this.updateTank(t);
       for (const o of g.objs) this.updateObj(o);
@@ -1241,6 +1247,193 @@
       }
     }
 
+    // ---------- Erdrutsche ----------
+    // Nach einer Explosion brechen dünne Überhänge und lose Brocken ab. Die Erde zerfällt in
+    // kleine Brocken, die fallen, auseinanderspritzen, seitlich abrollen und Schuttkegel bilden.
+    landslide(cx, cy, r, src) {
+      const g = this.g, m = this.mask;
+      const x0 = Math.max(0, Math.floor(cx - r - 56)), x1 = Math.min(W - 1, Math.ceil(cx + r + 56));
+      const y0 = Math.max(0, Math.floor(cy - r - 40)), y1 = Math.min(H - 1, Math.ceil(cy + r + 16));
+      const rw = x1 - x0 + 1, rh = y1 - y0 + 1;
+      const loose = new Uint8Array(rw * rh);
+      const L = (x, y) => x >= x0 && x <= x1 && y >= y0 && y <= y1 && loose[(y - y0) * rw + (x - x0)] === 1;
+      let count = 0;
+      // 1) dünne Überhänge (Erde mit Luft darunter)
+      for (let x = x0; x <= x1; x++) {
+        if (Math.abs(x - cx) > r + 50) continue;
+        let y = y0;
+        while (y <= y1) {
+          if (m[y * W + x] !== 1) { y++; continue; }
+          const top = y;
+          while (y <= y1 && m[y * W + x] === 1) y++;
+          const bot = y - 1;
+          if (top === y0 && y0 > 0 && m[(y0 - 1) * W + x] !== 0) continue; // reicht über den Bereich hinaus
+          const below = bot + 1 < H ? m[(bot + 1) * W + x] : 1;
+          if (below !== 0) continue;
+          const th = bot - top + 1;
+          // dünn -> bricht immer; sonst: ragt der Überhang weiter als ~2× seine Dicke über die nächste Stütze hinaus?
+          let fall = th <= SLIDE_THIN;
+          // (frei schwebende Felsen ohne Stütze auf beiden Seiten gehören zur Karte und bleiben)
+          if (!fall && th <= SLIDE_SPAN_TH) { const d = this.supportDist(x, bot); fall = d !== Infinity && d > Math.max(10, th * 2); }
+          if (fall) {
+            for (let k = top; k <= bot; k++) loose[(k - y0) * rw + (x - x0)] = 1;
+            count += th;
+          }
+        }
+      }
+      // 2) kleine, freischwebende Brocken (nicht mehr mit dem Rest verbunden)
+      if (!this.visit) { this.visit = new Int32Array(W * H); this.visitN = 0; }
+      if (this.visitN > 2e9) { this.visit.fill(0); this.visitN = 0; }
+      const vis = this.visit, callBase = this.visitN;
+      const stack = [], comp = [];
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+        const i = y * W + x;
+        if (m[i] !== 1 || L(x, y) || vis[i] > callBase) continue;
+        const nearAir = (x > 0 && !m[i - 1]) || (x < W - 1 && !m[i + 1]) || (y > 0 && !m[i - W]) || (y < H - 1 && !m[i + W]);
+        if (!nearAir) continue;
+        const stamp = ++this.visitN;
+        stack.length = 0; comp.length = 0;
+        stack.push(i); vis[i] = stamp;
+        let ok = true;
+        while (stack.length) {
+          const j = stack.pop();
+          comp.push(j);
+          if (comp.length > SLIDE_CHUNK) { ok = false; break; }
+          const jx = j % W, jy = (j / W) | 0;
+          if (jy >= H - 1) { ok = false; break; }
+          for (const n of [j - 1, j + 1, j - W, j + W]) {
+            const nx = n % W, ny = (n / W) | 0;
+            if (n < 0 || n >= W * H || Math.abs(nx - jx) > 1) continue;
+            const v = m[n];
+            if (v === 2) { ok = false; break; }
+            if (v !== 1 || vis[n] === stamp || L(nx, ny)) continue;
+            vis[n] = stamp; stack.push(n);
+          }
+          if (!ok) break;
+        }
+        if (ok) for (const j of comp) {
+          const jx = j % W, jy = (j / W) | 0;
+          if (jx < x0 || jx > x1 || jy < y0 || jy > y1) continue;
+          if (!loose[(jy - y0) * rw + (jx - x0)]) { loose[(jy - y0) * rw + (jx - x0)] = 1; count++; }
+        }
+      }
+      if (!count) return;
+      // 3) in Brocken zerlegen
+      const out = [];
+      let total = 0;
+      // jede Spalte bricht als Ganzes (sonst bleibt ein oberer Brocken auf dem noch festen unteren liegen)
+      const colRel = {};
+      for (let gy = y0; gy <= y1; gy += GRAIN) for (let gx = x0; gx <= x1; gx += GRAIN) {
+        let bits = 0, n = 0;
+        for (let k = 0; k < GRAIN * GRAIN; k++) {
+          const px = gx + (k % GRAIN), py = gy + ((k / GRAIN) | 0);
+          if (px <= x1 && py <= y1 && loose[(py - y0) * rw + (px - x0)] && m[py * W + px] === 1) { bits |= 1 << k; n++; }
+        }
+        if (!n) continue;
+        if ((total += n) > SLIDE_MAX) break;
+        if (colRel[gx] === undefined) colRel[gx] = this.tickN + Math.round(Math.abs(gx + 1.5 - cx) * 0.12 + rand(0, 5));
+        const gr = {
+          id: g.nextId++, x: gx, y: gy, vx: ((gx + 1.5 - cx) / (r + 24)) * 0.5 + rand(-0.25, 0.25), vy: 0,
+          bits, n, rel: colRel[gx], released: false, age: 0, src, x0: gx, y0: gy,
+        };
+        g.slides.push(gr);
+        out.push(gr.id, gx, gy, Math.round(gr.vx * 100), gr.rel - this.tickN, bits);
+      }
+      if (out.length) this.broadcast({ t: 'slide', d: out });
+    }
+    // Abstand zur nächsten Spalte, in der die Decke auf festem Boden/Wand aufliegt (Infinity = keine Stütze)
+    supportDist(x, bot) {
+      const m = this.mask;
+      let best = Infinity;
+      for (const dir of [-1, 1]) {
+        for (let d = 1; d <= 160; d++) {
+          const xx = x + dir * d;
+          if (xx < 0 || xx >= W) break;
+          if (m[bot * W + xx] === 0) break;                       // Decke hier unterbrochen
+          if (bot + 1 >= H || m[(bot + 1) * W + xx] !== 0) { best = Math.min(best, d); break; }
+        }
+      }
+      return best;
+    }
+    grainBlocked(x, y) {
+      const ix = Math.round(x), iy = Math.round(y), m = this.mask;
+      if (ix < 0 || ix + GRAIN > W) return true;
+      if (iy + GRAIN > H) return true;
+      for (let dy = 0; dy < GRAIN; dy++) {
+        const yy = iy + dy; if (yy < 0) continue;
+        const row = yy * W;
+        for (let dx = 0; dx < GRAIN; dx++) if (m[row + ix + dx] !== 0) return true;
+      }
+      return false;
+    }
+    updateSlides() {
+      const g = this.g, m = this.mask, out = [];
+      for (const gr of g.slides) {
+        if (!gr.released) {
+          if (this.tickN < gr.rel) continue;
+          gr.released = true;
+          for (let k = 0; k < GRAIN * GRAIN; k++) if (gr.bits & (1 << k)) { const i = (gr.y + ((k / GRAIN) | 0)) * W + gr.x + (k % GRAIN); if (m[i] === 1) m[i] = 0; }
+          continue;
+        }
+        gr.age++;
+        gr.vy = Math.min(gr.vy + G, 5);
+        gr.vx *= 0.985;
+        const steps = Math.max(1, Math.ceil(Math.max(Math.abs(gr.vx), Math.abs(gr.vy))));
+        let settle = false;
+        for (let s = 0; s < steps && !settle; s++) {
+          const nx = gr.x + gr.vx / steps, ny = gr.y + gr.vy / steps;
+          if (!this.grainBlocked(nx, ny)) { gr.x = nx; gr.y = ny; continue; }
+          if (!this.grainBlocked(gr.x, ny)) { gr.y = ny; gr.vx *= -0.3; continue; }
+          if (!this.grainBlocked(nx, gr.y)) { gr.x = nx; }
+          // Aufprall: schnelle Brocken spritzen auseinander, langsame rollen seitlich ab
+          if (gr.vy > 1.6) { gr.vx += (Math.random() - 0.5) * gr.vy * 0.7; gr.vy *= -0.15; break; }
+          const pref = gr.vx > 0.05 ? 1 : gr.vx < -0.05 ? -1 : (Math.random() < 0.5 ? 1 : -1);
+          let rolled = false;
+          for (const d of [pref, -pref]) {
+            if (!this.grainBlocked(gr.x + d, gr.y + 1) && !this.grainBlocked(gr.x + d, gr.y)) { gr.x += d; gr.y += 1; gr.vx = d * 0.5; gr.vy = 0.4; rolled = true; break; }
+          }
+          if (!rolled) settle = true;
+        }
+        // noch nicht von der Stelle gekommen? Kurz warten – vielleicht fällt der Brocken darunter gleich weg
+        if (settle && gr.age < 30 && Math.abs(gr.x - gr.x0) < 1 && Math.abs(gr.y - gr.y0) < 1) { settle = false; gr.vy = 0; }
+        // trifft einen Panzer
+        if (gr.vy > 1.4 && !gr.hit) {
+          for (const t of g.tanks) {
+            if (t.alive && Math.hypot(gr.x + 1.5 - t.x, gr.y + 1.5 - t.y) < R) { gr.hit = true; t.slideHits = (t.slideHits || 0) + 1; t.slideSrc = gr.src; break; }
+          }
+        }
+        if (gr.y > g.waterY) { gr.done = true; out.push(gr.id, -1, -1, 0); continue; }
+        if (settle || gr.age > 420) {
+          gr.done = true;
+          const ix = Math.round(gr.x), iy = Math.round(gr.y);
+          let left = gr.n, sb = 0;
+          // von unten nach oben auffüllen, nicht in Panzer, Fässer, Kisten oder liegende Minen
+          for (let row = GRAIN - 1; row >= 0 && left > 0; row--) for (let col = 0; col < GRAIN && left > 0; col++) {
+            const px = ix + col, py = iy + row;
+            if (px < 0 || px >= W || py < 0 || py >= H || m[py * W + px] !== 0) continue;
+            if (g.tanks.some((t) => !t.drowned && Math.hypot(px - t.x, py - t.y) < R + 1)) continue;
+            if (g.objs.some((o) => o.alive && Math.hypot(px - o.x, py - o.y) < o.r + 1)) continue;
+            if (g.proj.some((p) => p.rest && Math.hypot(px - p.x, py - p.y) < 5)) continue;
+            m[py * W + px] = 1; sb |= 1 << (row * GRAIN + col); left--;
+          }
+          out.push(gr.id, ix, iy, sb);
+        }
+      }
+      if (out.length) {
+        g.slides = g.slides.filter((s) => !s.done);
+        this.broadcast({ t: 'sl', d: out });
+      }
+      if (!g.slides.length) {
+        // verschüttete Panzer: Schaden je nach Erdmenge (höchstens 20)
+        for (const t of g.tanks) {
+          if (!t.slideHits) continue;
+          const dmg = Math.min(20, Math.round(t.slideHits * 0.7));
+          if (dmg > 0 && t.alive) { this.damage(t, dmg, t.slideSrc || null); this.say(t, 'hurt', 0, 0.6); }
+          t.slideHits = 0; t.slideSrc = null;
+        }
+      }
+    }
+
     // ---------- Napalm-Feuer ----------
     ignite(p) {
       const g = this.g;
@@ -1336,6 +1529,7 @@
       const g = this.g;
       this.carve(x, y, r);
       this.broadcast({ t: 'boom', x: Math.round(x), y: Math.round(y), r, k: kind });
+      if (r >= 15) this.landslide(x, y, r, src);
       let n = 0, total = 0, self = 0, victim = null;
       for (const t of g.tanks) {
         if (!t.alive) continue;
@@ -1417,7 +1611,7 @@
 
     stable() {
       const g = this.g;
-      if (g.queue.length || g.burst || g.chain.length || g.winch) return false;
+      if (g.queue.length || g.burst || g.chain.length || g.winch || g.slides.length) return false;
       if (g.proj.some((p) => !((p.type === 'mine' && p.rest && !p.triggered) || (p.type === 'c4' && p.rest && !(p.fuse > 0))))) return false;
       if (g.objs.some((o) => o.alive && !o.grounded)) return false;
       return g.tanks.every((t) => !t.alive || t.grounded);
@@ -1586,7 +1780,7 @@
         input: noInput(), hold: { u: 0, d: 0, pu: 0, pd: 0 },
         driveV: 0, burst: null, turnCount: s.turnCount, waterY: s.waterY, settleT: 0, waterRaised: false, out: s.out, fired: false,
         objs: [], chain: [], moved: false, stats: null, crateDone: false, sinceCrate: s.sinceCrate, bot: null, turnHit: false, sayQ: [], lastLine: {}, firedMode: '',
-        fires: (s.fires || []).map((f) => Object.assign({ born: -1 }, f)), burnDone: false, c4Done: false,
+        fires: (s.fires || []).map((f) => Object.assign({ born: -1 }, f)), burnDone: false, c4Done: false, slides: [],
       };
       const byId = {};
       for (const t of s.tanks) { const k = Object.assign({ vx: 0, vy: 0, grounded: false, bounces: 0 }, t); g.tanks.push(k); byId[k.id] = k; }

@@ -282,6 +282,8 @@
       case 'start': onStart(m); break;
       case 's': onSnap(m); break;
       case 'boom': onBoom(m); break;
+      case 'slide': onSlide(m); break;
+      case 'sl': onSlideLand(m); break;
       case 'carve': if (G) { carveTerrain(m.x, m.y, m.r, false, !!m.raw); if (Math.random() < 0.5) dirt(m.x, m.y, 3); } break;
       case 'dmg': onDmg(m); break;
       case 'say': if (G) { const p = tankPos(m.id); says.set(m.id, { text: m.text, t: performance.now(), x: p ? p[0] : null, y: p ? p[1] : null }); } break;
@@ -413,7 +415,7 @@
     x.fillStyle = gr; x.fillRect(0, 0, c.width, c.height);
     x.fillStyle = '#4E4535'; x.fillRect(0, 96, c.width, 24);
     x.fillStyle = '#6B7340'; x.fillRect(0, 94, c.width, 4);
-    x.setTransform(3.4, 0, 0, 3.4, 120, 94 - 10 * 3.4);
+    x.setTransform(2.7, 0, 0, 2.7, 116, 94 - 10 * 2.7);
     const aim = 30 + Math.sin(now / 900) * 18;
     drawTank(x, { x: 0, y: 0, tilt: 0, face: 1, aim, alive: true }, myLook, lookPreview.color, now, true);
   }
@@ -445,7 +447,7 @@
       terrain: buildTerrain(mask, theme), hills: makeHills(),
     };
     snapPrev = snapCur = null;
-    particles = []; texts = []; tracers = []; marks = []; says = new Map();
+    particles = []; texts = []; tracers = []; marks = []; says = new Map(); slides.clear(); tankAnim.clear();
     cam.overview = false; cam.z = 1; cam.manualUntil = 0; cam.focus = null; cam.punch = 0;
     overInfo = null;
     for (const id of ['over', 'weaponMenu', 'gameMenu', 'help']) $(id).classList.add('hidden');
@@ -479,22 +481,28 @@
           continue;
         }
         const shade = y - top;
+        // Umgebungsschatten: unter Überhängen und in Höhlen dunkler, Seitenwände etwas dunkler
+        let f = 1;
+        for (let q = 1; q <= 5; q++) if (y + q < H && !mask[k + q * W]) { f = 0.55 + q * 0.08; break; }
+        if (f === 1 && depth > 7 && ((x > 0 && !mask[k - 1]) || (x < W - 1 && !mask[k + 1]))) f = 0.84;
         let c;
         if (depth <= 3) c = th.top1;
         else if (depth <= 7) c = th.top2;
         else {
           const t = 0.5 + 0.25 * (Math.sin(x * 0.045 + Math.sin(y * 0.031) * 2.2) + Math.sin(y * 0.07 + sxw));
-          const dk = 1 - Math.min(shade, 300) / 300 * 0.28;
+          const dk = (1 - Math.min(shade, 300) / 300 * 0.28) * f;
           const nz = (n - 0.5) * 16;
           d[o] = clamp((lerp(th.d1[0], th.d2[0], t) + nz) * dk, 0, 255);
           d[o + 1] = clamp((lerp(th.d1[1], th.d2[1], t) + nz) * dk, 0, 255);
           d[o + 2] = clamp((lerp(th.d1[2], th.d2[2], t) + nz) * dk, 0, 255);
-          if (n > 0.996) { d[o] += 40; d[o + 1] += 38; d[o + 2] += 32; }
+          if (n > 0.995) { d[o] += 36; d[o + 1] += 34; d[o + 2] += 28; }      // Kiesel
+          else if (n < 0.004) { d[o] *= 0.7; d[o + 1] *= 0.7; d[o + 2] *= 0.7; } // dunkle Steinchen
           d[o + 3] = 255;
           continue;
         }
-        const nz = (n - 0.5) * 18;
-        d[o] = clamp(c[0] + nz, 0, 255); d[o + 1] = clamp(c[1] + nz, 0, 255); d[o + 2] = clamp(c[2] + nz, 0, 255); d[o + 3] = 255;
+        // Grasnarbe mit heller Lichtkante oben
+        const nz = (n - 0.5) * 18, hl = depth === 1 ? 24 : depth === 2 ? 10 : 0;
+        d[o] = clamp((c[0] + nz + hl) * f, 0, 255); d[o + 1] = clamp((c[1] + nz + hl) * f, 0, 255); d[o + 2] = clamp((c[2] + nz + hl * 0.6) * f, 0, 255); d[o + 3] = 255;
       }
     }
     sx.putImageData(img, 0, 0);
@@ -503,10 +511,12 @@
     bx.fillStyle = `rgb(${Math.round(th.d2[0] * 0.58)},${Math.round(th.d2[1] * 0.58)},${Math.round(th.d2[2] * 0.58)})`;
     bx.beginPath(); bx.moveTo(0, H);
     for (let x = 0; x < W; x += 2) {
-      let run = 0, top = H;
+      let run = 0, top = H, first = -1;
       for (let y = 0; y < H; y++) {
-        if (mask[y * W + x] === 1) { run++; if (run >= 40) { top = y - 39; break; } } else run = 0;
+        if (mask[y * W + x] === 1) { if (first < 0) first = y; run++; if (run >= 40) { top = y - 39; break; } } else run = 0;
       }
+      // dünne Decke über einer Höhle gehört dazu (nicht aber hoch schwebende Felsen)
+      if (first >= 0 && top - first < 145) top = first;
       bx.lineTo(x, top + 6);
     }
     bx.lineTo(W, H); bx.closePath(); bx.fill();
@@ -957,6 +967,7 @@
     switch (m.k) {
       case 'shot': {
         SND.cannon(panOf(m.x));
+        tankShot(m.id);
         cam.manualUntil = 0;
         for (let i = 0; i < 10; i++) particles.push({ x: m.x, y: m.y, vx: (Math.random() - 0.5) * 2, vy: (Math.random() - 0.5) * 2 - 0.5, life: 0, max: 30 + Math.random() * 20, size: 4 + Math.random() * 4, col: '#9A9A90', type: 'smoke' });
         particles.push({ x: m.x, y: m.y, vx: 0, vy: 0, life: 0, max: 6, size: 10, col: '#FFE7A0', type: 'flash' });
@@ -1035,12 +1046,115 @@
     }, 1800);
   }
 
+  // ---------- Erdrutsche: Brocken fallen, spritzen auseinander, rollen ab ----------
+  // Der Gastgeber entscheidet, wo jeder Brocken liegen bleibt ('sl'); hier wird der Flug nur nachgespielt.
+  const GR = 3, SLOT_ROW = 64, SLOTS = 64 * 64;
+  const slideSprite = document.createElement('canvas'); slideSprite.width = SLOT_ROW * GR; slideSprite.height = (SLOTS / SLOT_ROW) * GR;
+  const slideSx = slideSprite.getContext('2d');
+  let slideSlot = 0, slideAcc = 0, slideLast = 0;
+  const slides = new Map();
+  const slotXY = (s) => [(s % SLOT_ROW) * GR, Math.floor(s / SLOT_ROW) * GR];
+  function onSlide(m) {
+    if (!G) return;
+    const now = performance.now(), d = m.d;
+    for (let i = 0; i < d.length; i += 6) {
+      const slot = slideSlot++ % SLOTS, [sx, sy] = slotXY(slot);
+      const x = d[i + 1], y = d[i + 2], bits = d[i + 5];
+      slideSx.clearRect(sx, sy, GR, GR);
+      // Aussehen des Brockens vom Gelände übernehmen (nur die Pixel, die wirklich abbrechen)
+      for (let k = 0; k < GR * GR; k++) if (bits & (1 << k)) slideSx.drawImage(G.terrain.soil, x + (k % GR), y + ((k / GR) | 0), 1, 1, sx + (k % GR), sy + ((k / GR) | 0), 1, 1);
+      slides.set(d[i], { x, y, x0: x, y0: y, vx: d[i + 3] / 100, vy: 0, bits, slot, rel: now + d[i + 4] * 16.7, released: false, age: 0, rest: false, frames: 0 });
+    }
+  }
+  function releaseGrain(s) {
+    s.released = true;
+    const T = G.terrain;
+    for (let k = 0; k < GR * GR; k++) if (s.bits & (1 << k)) {
+      const px = s.x0 + (k % GR), py = s.y0 + ((k / GR) | 0);
+      T.sx.clearRect(px, py, 1, 1);
+      G.mask[py * W + px] = 0;
+    }
+    if (Math.random() < 0.15) particles.push({ x: s.x0 + 1.5, y: s.y0 + 1.5, vx: (Math.random() - 0.5) * 0.6, vy: -0.2, life: 0, max: 60, size: 3 + Math.random() * 3, col: '#8A7A60', type: 'smoke' });
+  }
+  function onSlideLand(m) {
+    if (!G) return;
+    const d = m.d, T = G.terrain;
+    for (let i = 0; i < d.length; i += 4) {
+      const s = slides.get(d[i]), x = d[i + 1], y = d[i + 2], sb = d[i + 3];
+      if (s && !s.released) releaseGrain(s);
+      slides.delete(d[i]);
+      if (x < 0) { if (s && Math.random() < 0.3) particles.push({ x: s.x + 1.5, y: G.waterY, vx: 0, vy: -1.5, life: 0, max: 30, size: 2, col: '#BFD8E0', type: 'water' }); continue; }
+      // Pixel des Brockens der Reihe nach auf die gemeldeten Stellen setzen
+      const src = [];
+      if (s) for (let k = 0; k < GR * GR; k++) if (s.bits & (1 << k)) src.push(k);
+      let n = 0;
+      for (let k = 0; k < GR * GR; k++) {
+        if (!(sb & (1 << k))) continue;
+        const px = x + (k % GR), py = y + ((k / GR) | 0);
+        if (s && src.length) { const [sx, sy] = slotXY(s.slot), kk = src[n++ % src.length]; T.sx.drawImage(slideSprite, sx + (kk % GR), sy + ((kk / GR) | 0), 1, 1, px, py, 1, 1); }
+        else { const th = G.theme; T.sx.fillStyle = `rgb(${th.d1[0]},${th.d1[1]},${th.d1[2]})`; T.sx.fillRect(px, py, 1, 1); }
+        G.mask[py * W + px] = 1;
+      }
+      if (Math.random() < 0.06) particles.push({ x: x + 1.5, y: y + 1, vx: (Math.random() - 0.5) * 0.8, vy: -0.3, life: 0, max: 50, size: 3 + Math.random() * 2, col: '#9A8A6E', type: 'smoke' });
+    }
+  }
+  const grainBlocked = (x, y) => {
+    const ix = Math.round(x), iy = Math.round(y);
+    if (ix < 0 || ix + GR > W || iy + GR > H) return true;
+    for (let dy = 0; dy < GR; dy++) { const yy = iy + dy; if (yy < 0) continue; for (let dx = 0; dx < GR; dx++) if (G.mask[yy * W + ix + dx] !== 0) return true; }
+    return false;
+  };
+  function stepGrain(s) {
+    s.age++;
+    s.vy = Math.min(s.vy + PHYS.G, 5); s.vx *= 0.985;
+    const steps = Math.max(1, Math.ceil(Math.max(Math.abs(s.vx), Math.abs(s.vy))));
+    for (let i = 0; i < steps; i++) {
+      const nx = s.x + s.vx / steps, ny = s.y + s.vy / steps;
+      if (!grainBlocked(nx, ny)) { s.x = nx; s.y = ny; continue; }
+      if (!grainBlocked(s.x, ny)) { s.y = ny; s.vx *= -0.3; continue; }
+      if (!grainBlocked(nx, s.y)) s.x = nx;
+      if (s.vy > 1.6) { s.vx += (Math.random() - 0.5) * s.vy * 0.7; s.vy *= -0.15; return; }
+      const pref = s.vx > 0.05 ? 1 : s.vx < -0.05 ? -1 : (Math.random() < 0.5 ? 1 : -1);
+      for (const dd of [pref, -pref]) if (!grainBlocked(s.x + dd, s.y + 1) && !grainBlocked(s.x + dd, s.y)) { s.x += dd; s.y += 1; s.vx = dd * 0.5; s.vy = 0.4; return; }
+      if (s.age > 30 || Math.abs(s.x - s.x0) >= 1 || Math.abs(s.y - s.y0) >= 1) s.rest = true; // wartet auf die Meldung des Gastgebers
+      s.vy = 0;
+      return;
+    }
+  }
+  function updateSlides(now) {
+    if (!slides.size) { slideLast = now; slideAcc = 0; return; }
+    slideAcc += Math.min(100, now - slideLast); slideLast = now;
+    const ticks = Math.floor(slideAcc / 16.7); slideAcc -= ticks * 16.7;
+    for (const [id, s] of slides) {
+      if (!s.released) { if (now >= s.rel) releaseGrain(s); continue; }
+      if (!s.rest) for (let i = 0; i < ticks; i++) stepGrain(s);
+      if (++s.frames > 1200) slides.delete(id); // Sicherheitsnetz, falls eine Meldung verloren ging
+    }
+  }
+  function drawSlides() {
+    for (const s of slides.values()) {
+      if (!s.released) continue;
+      const [sx, sy] = slotXY(s.slot);
+      ctx.drawImage(slideSprite, sx, sy, GR, GR, Math.round(s.x), Math.round(s.y), GR, GR);
+    }
+  }
+
   // ---------- Partikel ----------
   function explosionFx(x, y, r) {
     const th = G.theme;
     const dirtCol = `rgb(${th.d1[0]},${th.d1[1]},${th.d1[2]})`;
     particles.push({ x, y, vx: 0, vy: 0, life: 0, max: 10, size: r * 1.5, col: '#FFE7A0', type: 'flash' });
-    particles.push({ x, y, vx: 0, vy: 0, life: 0, max: 18, size: r, col: '#FFFFFF', type: 'ring' });
+    particles.push({ x, y, vx: 0, vy: 0, life: 0, max: 22, size: r * 1.6, col: '#FFFFFF', type: 'ring' });
+    // Feuerball aus mehreren glühenden Wolken
+    for (let i = 0; i < Math.min(16, 4 + r / 3); i++) {
+      const a = Math.random() * Math.PI * 2, s = Math.random() * r * 0.05 + 0.3;
+      particles.push({ x: x + Math.cos(a) * r * 0.2, y: y + Math.sin(a) * r * 0.2, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 0.4, life: 0, max: 20 + Math.random() * 16, size: r * (0.3 + Math.random() * 0.3), type: 'fire' });
+    }
+    // Erdbrocken fliegen weg und prallen auf
+    for (let i = 0; i < Math.min(24, 6 + r / 2); i++) {
+      const a = -Math.PI * (0.1 + Math.random() * 0.8), s = 1.5 + Math.random() * r * 0.09;
+      particles.push({ x: x + (Math.random() - 0.5) * r * 0.5, y: y + (Math.random() - 0.5) * r * 0.3, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0, max: 90 + Math.random() * 60, size: 1.5 + Math.random() * 2.2, col: dirtCol, type: 'chunk', rot: Math.random() * 6, vr: (Math.random() - 0.5) * 0.4 });
+    }
     const n = Math.min(40, 10 + r);
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2, s = Math.random() * r * 0.12 + 1;
@@ -1169,6 +1283,8 @@
     ctx.drawImage(G.terrain.back, 0, 0);
     ctx.drawImage(G.terrain.soil, 0, 0);
     ctx.drawImage(G.terrain.conc, 0, 0);
+    updateSlides(now);
+    drawSlides();
     for (const o of snapCur.objs.values()) { const p = interp('objs', o.id) || o; drawObj(p); }
     const list = [...snapCur.tanks.values()].filter((t) => !t.dr).map((t) => interp('tanks', t.id));
     const lookOf = (t) => { const info = G.tankInfo[t.id]; const team = info ? G.teams[info.team] : null; return [team ? team.look : null, team ? S.TEAM_COLORS[team.color] : '#888']; };
@@ -1312,6 +1428,16 @@
 
   function drawParallax(th, now, z) {
     const t = now / 1000;
+    // Sonnendunst und ziehende Wolken (weit hinten, kaum Parallaxe)
+    const sx = vw * 0.78 - (cam.x - W / 2) * z * 0.05, sy = vh * 0.12;
+    let g = ctx.createRadialGradient(sx, sy, 4, sx, sy, Math.max(vw, vh) * 0.45);
+    g.addColorStop(0, 'rgba(255,248,220,.5)'); g.addColorStop(1, 'rgba(255,248,220,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, vw, vh);
+    ctx.fillStyle = 'rgba(240,240,232,.4)';
+    for (let i = 0; i < 6; i++) {
+      const span = vw + 400, cx = ((i * 337 + t * 8 - (cam.x - W / 2) * z * 0.12) % span + span) % span - 200, cy = vh * (0.08 + (i % 3) * 0.07);
+      for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.ellipse(cx + k * 34, cy + Math.sin(k * 2 + i) * 6, 40, 15, 0, 0, Math.PI * 2); ctx.fill(); }
+    }
     for (const s of G.hills.smokes) {
       const bx = (s.x - cam.x) * z * 0.35 + vw / 2;
       if (bx < -200 || bx > vw + 200) continue;
@@ -1333,6 +1459,10 @@
         ctx.lineTo(x, baseY - h * z * 0.8);
       }
       ctx.lineTo(vw, vh); ctx.fill();
+      // Dunst zwischen den Hügelreihen (Tiefenwirkung)
+      const hz = ctx.createLinearGradient(0, baseY - 60 * z, 0, vh);
+      hz.addColorStop(0, 'rgba(0,0,0,0)'); hz.addColorStop(1, th.sky2);
+      ctx.globalAlpha = 0.32; ctx.fillStyle = hz; ctx.fillRect(0, baseY - 60 * z, vw, vh);
     });
     ctx.globalAlpha = 1;
   }
@@ -1351,26 +1481,80 @@
     ctx.globalAlpha = 1;
   }
 
-  // ---------- Panzer zeichnen (mit Tarnmuster + Klecks-Kommandant mit Kopfbedeckung) ----------
-  const K = 0.78;
-  const P = (x, y) => [(x - 30) * K, (y - 16) * K];
-  function poly(c, pts) { c.beginPath(); pts.forEach(([x, y], i) => { const [a, b] = P(x, y); if (i) c.lineTo(a, b); else c.moveTo(a, b); }); c.closePath(); }
-  const HULL = [[3, 21], [9, 14], [51, 14], [57, 21]];
-  const TURRET = [[17, 14], [21, 7], [37, 7], [42, 10], [42, 14]];
-  function camoPattern(c, cm, seed) {
-    c.fillStyle = cm.spot;
-    const r = (i) => { const v = Math.sin(seed * 12.9898 + i * 78.233) * 43758.5453; return v - Math.floor(v); };
-    if (cm.pat === 'spots') {
-      for (const [x, y, rx, ry] of [[18, 17, 5, 1.6], [38, 18, 6, 1.5], [47, 16.5, 3, 1.2], [27, 10, 3, 1.4], [34, 9, 2.4, 1.2]]) { const [ex, ey] = P(x, y); c.beginPath(); c.ellipse(ex, ey, rx * K, ry * K, 0, 0, Math.PI * 2); c.fill(); }
-    } else if (cm.pat === 'blobs') {
-      for (let i = 0; i < 7; i++) { const [ex, ey] = P(6 + r(i) * 46, 8 + r(i + 9) * 12); c.beginPath(); c.ellipse(ex, ey, (3 + r(i + 3) * 4) * K, (1.4 + r(i + 5) * 1.6) * K, r(i + 7) * 3, 0, Math.PI * 2); c.fill(); }
-    } else if (cm.pat === 'digital') {
-      for (let i = 0; i < 26; i++) { const [ex, ey] = P(4 + r(i) * 50, 7 + r(i + 30) * 14); c.fillRect(ex, ey, 1.4, 1.4); }
-    } else if (cm.pat === 'stripes') {
-      c.lineWidth = 1.3; c.strokeStyle = cm.spot;
-      for (let i = 0; i < 9; i++) { const [ax, ay] = P(6 + i * 6, 6); const [bx, by] = P(2 + i * 6 + r(i) * 3, 22); c.beginPath(); c.moveTo(ax, ay); c.lineTo(bx, by); c.stroke(); }
-    }
+  // ---------- Panzer zeichnen: Kampfpanzer (Tarnmuster, laufende Ketten, Rückstoß, Klecks-Kommandant) ----------
+  // Gezeichnet in "Modell-Einheiten" (Ursprung = Bodenmitte, Blick nach rechts), skaliert mit TK.
+  // Drehpunkt und Länge des Rohrs passen genau zu PHYS.PIVOT_* und PHYS.MUZZLE (dort startet die Granate).
+  const TK = 0.88;
+  const TK_PIV = [PHYS.PIVOT_X / TK, (PHYS.PIVOT_Y - 10) / TK];
+  const TK_LEN = PHYS.MUZZLE / TK;
+  const tankAnim = new Map(); // Panzer-ID -> { travel, lastX, shot, sway }
+  const prand = (s) => { const v = Math.sin(s * 12.9898) * 43758.5453; return v - Math.floor(v); };
+  function tkShade(hex, f) {
+    const n = parseInt(hex.slice(1), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+    const k = (v) => Math.round(clamp(f < 0 ? v * (1 + f) : v + (255 - v) * f, 0, 255));
+    return `rgb(${k(r)},${k(g)},${k(b)})`;
   }
+  function tkPoly(c, pts) { c.beginPath(); pts.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.closePath(); }
+  function tkCamo(c, cm, x0, y0, x1, y1, seed) {
+    const w = x1 - x0, h = y1 - y0;
+    c.fillStyle = cm.spot; c.strokeStyle = cm.spot;
+    if (cm.pat === 'spots') for (let i = 0; i < Math.ceil(w / 6); i++) { c.beginPath(); c.ellipse(x0 + prand(seed + i) * w, y0 + prand(seed + i + 40) * h, 1.6 + prand(seed + i + 9) * 2.6, 0.8 + prand(seed + i + 3) * 1.1, prand(i) * 0.6, 0, 6.283); c.fill(); }
+    else if (cm.pat === 'blobs') for (let i = 0; i < Math.ceil(w / 5); i++) { c.beginPath(); c.ellipse(x0 + prand(seed + i) * w, y0 + prand(seed + i + 40) * h, 2 + prand(seed + i + 9) * 3, 1 + prand(seed + i + 3) * 1.4, prand(i + 7) * 3, 0, 6.283); c.fill(); }
+    else if (cm.pat === 'digital') for (let i = 0; i < Math.ceil(w * h / 7); i++) c.fillRect(Math.round((x0 + prand(seed + i) * w) * 2) / 2, Math.round((y0 + prand(seed + i + 70) * h) * 2) / 2, 0.9, 0.9);
+    else if (cm.pat === 'stripes') { c.lineWidth = 0.9; for (let x = x0 - 6; x < x1 + 6; x += 3.2 + prand(seed + x) * 1.6) { c.beginPath(); c.moveTo(x, y0); c.lineTo(x - 2.5 + prand(x) * 2, y1); c.stroke(); } }
+  }
+  // Panzerplatte: Grundfarbe, Tarnmuster, Licht von oben, Schmutz unten, Kanten
+  function tkPlate(c, pts, col, cm, o) {
+    o = o || {};
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    for (const [x, y] of pts) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+    tkPoly(c, pts); c.fillStyle = col; c.fill();
+    c.save(); tkPoly(c, pts); c.clip();
+    if (cm.spot && o.camo !== false) tkCamo(c, cm, x0, y0, x1, y1, o.seed || 1);
+    let g = c.createLinearGradient(0, y0, 0, y1);
+    g.addColorStop(0, 'rgba(255,250,225,.30)'); g.addColorStop(0.35, 'rgba(255,250,225,.04)'); g.addColorStop(1, 'rgba(0,0,0,.28)');
+    c.fillStyle = g; c.fillRect(x0 - 1, y0 - 1, x1 - x0 + 2, y1 - y0 + 2);
+    if (o.dirt) { g = c.createLinearGradient(0, y1 - o.dirt, 0, y1); g.addColorStop(0, 'rgba(92,74,50,0)'); g.addColorStop(1, 'rgba(92,74,50,.7)'); c.fillStyle = g; c.fillRect(x0 - 1, y1 - o.dirt, x1 - x0 + 2, o.dirt + 1); }
+    c.restore();
+    c.lineJoin = 'round'; c.lineWidth = 0.45; c.strokeStyle = 'rgba(20,22,14,.75)'; tkPoly(c, pts); c.stroke();
+    const a = pts[o.edgeA || 1], b = pts[o.edgeB || 2];
+    c.strokeStyle = 'rgba(255,250,220,.35)'; c.lineWidth = 0.35; c.beginPath(); c.moveTo(a[0], a[1] + 0.3); c.lineTo(b[0], b[1] + 0.3); c.stroke();
+  }
+  function tkWheel(c, x, y, r, rot, bolts) {
+    c.fillStyle = '#1d1e18'; c.beginPath(); c.arc(x, y, r, 0, 6.283); c.fill();
+    const g = c.createRadialGradient(x - r * 0.3, y - r * 0.35, 0, x, y, r * 0.85);
+    g.addColorStop(0, '#7d7f70'); g.addColorStop(1, '#4a4c40');
+    c.fillStyle = g; c.beginPath(); c.arc(x, y, r * 0.78, 0, 6.283); c.fill();
+    c.fillStyle = '#34352c'; c.beginPath(); c.arc(x, y, r * 0.32, 0, 6.283); c.fill();
+    c.fillStyle = 'rgba(210,205,180,.75)';
+    for (let i = 0; i < bolts; i++) { const a = rot + (i / bolts) * 6.283; c.beginPath(); c.arc(x + Math.cos(a) * r * 0.52, y + Math.sin(a) * r * 0.52, r * 0.07 + 0.08, 0, 6.283); c.fill(); }
+  }
+  function tkSprocket(c, x, y, r, rot) {
+    c.fillStyle = '#2a2b23'; c.beginPath();
+    for (let i = 0; i < 24; i++) { const a = rot + (i / 24) * 6.283, rr = i % 2 ? r : r * 0.82; c.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); }
+    c.closePath(); c.fill();
+    tkWheel(c, x, y, r * 0.8, rot, 5);
+  }
+  // Kettenbahn um Antriebsrad (hinten) und Leitrad (vorn)
+  const TK_BELT = (() => {
+    const pts = [], xr = -20.5, yr = -4.3, rr = 3.6, xf = 20.8, yf = -4.6, rf = 3.4;
+    for (let a = Math.PI / 2; a <= Math.PI * 1.5; a += 0.2) pts.push([xr + Math.cos(a) * rr, yr + Math.sin(a) * rr]);
+    for (let i = 0; i <= 14; i++) pts.push([lerp(xr, xf, i / 14), -8.1]);
+    for (let a = -Math.PI / 2; a <= Math.PI / 2; a += 0.2) pts.push([xf + Math.cos(a) * rf, yf + Math.sin(a) * rf]);
+    pts.push([xf - 2, -0.5]); pts.push([xr + 2, -0.5]);
+    return pts;
+  })();
+  function tkTrack(c, travel, alive) {
+    c.lineJoin = 'round';
+    tkPoly(c, TK_BELT); c.lineWidth = 1.6; c.strokeStyle = '#22231c'; c.stroke();
+    if (alive) { c.setLineDash([0.9, 0.85]); c.lineDashOffset = travel; c.lineWidth = 1.5; c.strokeStyle = '#46473b'; c.stroke(); c.setLineDash([]); }
+  }
+  function tkRivets(c, x0, x1, y, step) { c.fillStyle = 'rgba(230,225,200,.55)'; for (let x = x0; x <= x1; x += step) { c.beginPath(); c.arc(x, y, 0.28, 0, 6.283); c.fill(); } }
+  const TK_DECK = [[-23.5, -10.6], [-22.8, -13.3], [14.5, -13.3], [25.5, -10.2], [25.2, -8.6], [-23.5, -8.6]];
+  const TK_SKIRT = [[-24.6, -11.2], [21.5, -11.2], [25.8, -8.7], [25.2, -5.6], [-24.6, -5.6]];
+  const TK_TURRET = [[-15.6, -13.2], [-16.6, -15.6], [-15.4, -18.9], [-3.5, -20.6], [9.2, -20.6], [15.6, -17.4], [15.4, -14.6], [11.8, -13.2]];
+  const DEAD = { base: '#2C2C26', turret: '#33332C', dark: '#18180F' };
+
   function drawHat(c, hat, hx, hy) {
     switch (hat) {
       case 'helm':
@@ -1392,56 +1576,109 @@
       default:
     }
   }
+  function tankShot(id) { const a = tankAnim.get(id); if (a) a.shot = performance.now(); }
+
   function drawTank(c, t, look, band, now, active) {
-    const cm = t.alive ? (CAMO[look && look.camo] || CAMO.oliv) : { base: '#2C2C26', turret: '#33332C', dark: '#18180F' };
-    c.save();
-    c.translate(t.x, t.y);
-    c.rotate(t.tilt || 0);
-    const aim = t.alive ? t.aim : -18;
-    const a = (aim * Math.PI) / 180;
-    const ang = Math.atan2(-Math.sin(a), t.face * Math.cos(a));
-    c.save();
-    c.translate(PHYS.PIVOT_X * t.face, PHYS.PIVOT_Y);
-    c.rotate(ang - (t.tilt || 0));
-    c.fillStyle = cm.dark;
-    c.fillRect(0, -1.2, 16, 2.4);
-    c.fillRect(14, -1.9, 4, 3.8);
-    c.restore();
-    c.scale(t.face, 1);
-    c.fillStyle = '#24261F';
-    const [kx, ky] = P(2, 20);
-    c.beginPath(); if (c.roundRect) c.roundRect(kx, ky, 56 * K, 9 * K, 4.5 * K); else c.rect(kx, ky, 56 * K, 9 * K); c.fill();
-    c.fillStyle = t.alive ? '#4A4C42' : '#2A2A24';
-    for (let i = 0; i < 7; i++) { const [wx, wy] = P(8 + i * 7, 24.5); c.beginPath(); c.arc(wx, wy, 2.9 * K, 0, Math.PI * 2); c.fill(); }
-    // Wanne + Turm mit Tarnmuster
-    c.fillStyle = cm.base; poly(c, HULL); c.fill();
-    if (t.alive) { c.save(); poly(c, HULL); c.clip(); camoPattern(c, cm, t.id || 1); c.restore(); }
-    c.strokeStyle = cm.dark; c.lineWidth = 0.6; poly(c, HULL); c.stroke();
-    c.fillStyle = cm.turret; poly(c, TURRET); c.fill();
-    if (t.alive) { c.save(); poly(c, TURRET); c.clip(); camoPattern(c, cm, (t.id || 1) + 5); c.restore(); }
-    c.strokeStyle = cm.dark; poly(c, TURRET); c.stroke();
-    if (t.alive) {
-      const [bx, by] = P(21, 9.8);
-      c.fillStyle = band; c.fillRect(bx, by, 15 * K, 2.6 * K);
-      // Klecks-Kommandant
-      const [hx, hy] = P(28, 7.2);
-      const bounce = active ? Math.sin(now / 160) * 0.5 : 0;
-      c.fillStyle = band;
-      c.beginPath(); c.ellipse(hx, hy + bounce, 4.2, 4.0, 0, Math.PI, 0); c.fill();
-      c.strokeStyle = 'rgba(0,0,0,.45)'; c.lineWidth = 0.6; c.stroke();
-      c.fillStyle = 'rgba(255,255,255,.4)'; c.beginPath(); c.ellipse(hx - 1.6, hy - 2.6 + bounce, 1.2, 0.7, 0, 0, Math.PI * 2); c.fill();
-      const lookY = clamp(-aim / 60, -1, 1) * 0.6;
-      for (const ex of [hx + 0.4, hx + 2.6]) {
-        c.fillStyle = '#FFFFFF'; c.beginPath(); c.arc(ex, hy - 1.6 + bounce, 1.05, 0, Math.PI * 2); c.fill();
-        c.fillStyle = '#16160F'; c.beginPath(); c.arc(ex + 0.35, hy - 1.6 + bounce + lookY, 0.55, 0, Math.PI * 2); c.fill();
+    const alive = t.alive;
+    const cm = alive ? (CAMO[look && look.camo] || CAMO.oliv) : DEAD;
+    const face = t.face, tilt = t.tilt || 0;
+    // Animation (nur im Spielfeld): Kettenlauf, Rückstoß, Nicken, Antenne
+    let travel = 0, recoil = 0, pitch = 0, moving = 0, sway = 0;
+    if (c === ctx && t.id) {
+      let a = tankAnim.get(t.id);
+      if (!a) { a = { travel: 0, lastX: t.x, shot: -1e9, sway: 0, swayV: 0 }; tankAnim.set(t.id, a); }
+      const dx = t.x - a.lastX; a.lastX = t.x;
+      if (Math.abs(dx) < 30) { a.travel += (dx * face) / TK; moving = Math.abs(dx); }
+      a.swayV += (-a.sway * 0.08 - a.swayV * 0.08) + (moving > 0.15 ? (Math.random() - 0.5) * 0.12 : 0);
+      a.sway += a.swayV;
+      travel = a.travel; sway = a.sway;
+      const ts = (now - a.shot) / 1000;
+      if (ts >= 0 && ts < 0.8) {
+        recoil = 4 * (ts < 0.05 ? ts / 0.05 : Math.exp(-(ts - 0.05) * 6));
+        pitch = -0.05 * face * Math.exp(-ts * 5) * Math.cos(ts * 13);
+        if (ts < 0.03) { a.sway -= 0.6 * face; }
       }
-      drawHat(c, look && look.hat, hx, hy + bounce);
-      const [ax, ay] = P(20, 7);
-      c.strokeStyle = cm.dark; c.lineWidth = 0.5; c.beginPath(); c.moveTo(ax, ay); c.lineTo(ax - 2, ay - 10); c.stroke();
-      c.fillStyle = band; c.fillRect(ax - 2, ay - 10, 3, 2);
-    } else if (c === ctx && Math.random() < 0.06) {
-      particles.push({ x: t.x + (Math.random() - 0.5) * 8, y: t.y - 6, vx: 0.1, vy: -0.5, life: 0, max: 90, size: 5, col: '#3B3B36', type: 'smoke' });
+      // Auspuff + Staub beim Fahren, Qualm bei Wracks
+      if (alive && moving > 0.15) {
+        const cs = Math.cos(tilt), sn = Math.sin(tilt);
+        const L = (lx, ly) => [t.x + lx * cs - ly * sn, t.y + lx * sn + ly * cs];
+        if (Math.random() < 0.35) { const [ex, ey] = L(-22 * face, -2); particles.push({ x: ex, y: ey, vx: -face * 0.3, vy: -0.3, life: 0, max: 45, size: 2.2, col: '#4A4A44', type: 'smoke' }); }
+        if (Math.random() < 0.45) { const [ex, ey] = L(-18 * face * Math.sign(dx * face || 1), 9); particles.push({ x: ex, y: ey, vx: -dx * 0.6 + (Math.random() - 0.5) * 0.3, vy: -0.25 - Math.random() * 0.3, life: 0, max: 40, size: 2.4 + Math.random() * 2, col: '#A8977A', type: 'smoke' }); }
+      } else if (!alive && Math.random() < 0.06) particles.push({ x: t.x + (Math.random() - 0.5) * 8, y: t.y - 6, vx: 0.1, vy: -0.5, life: 0, max: 90, size: 5, col: '#3B3B36', type: 'smoke' });
     }
+    const aimDeg = alive ? t.aim : -12;
+    const a = (aimDeg * Math.PI) / 180;
+    const ang = Math.atan2(-Math.sin(a), face * Math.cos(a));
+    const rot = travel / 3.1;
+    c.save();
+    c.translate(t.x, t.y); c.rotate(tilt + pitch);
+    // Schatten auf dem Boden
+    c.fillStyle = 'rgba(20,18,12,.32)'; c.beginPath(); c.ellipse(0, 10.6, 23, 1.6, 0, 0, 6.283); c.fill();
+
+    // 1) Fahrwerk, Wanne, Schürzen, Antenne, Staukorb
+    c.save(); c.translate(0, 10); c.scale(face * TK, TK);
+    tkTrack(c, travel, alive);
+    tkSprocket(c, -20.5, -4.3, 2.9, rot);
+    tkWheel(c, 20.8, -4.6, 2.6, rot, 5);
+    for (let i = 0; i < 6; i++) tkWheel(c, -14.6 + i * 5.9, -3.6, 3.05, rot, 6);
+    tkPlate(c, TK_DECK, tkShade(cm.base, -0.12), cm, { seed: (t.id || 1) * 3 });
+    tkPlate(c, TK_SKIRT, cm.base, cm, { seed: (t.id || 1) * 7, dirt: 2.4 });
+    c.strokeStyle = 'rgba(20,22,14,.55)'; c.lineWidth = 0.3;
+    for (let x = -16.5; x < 22; x += 8) { c.beginPath(); c.moveTo(x, -11.1); c.lineTo(x, -5.7); c.stroke(); }
+    tkRivets(c, -23.5, 21, -10.3, 2.6);
+    c.fillStyle = '#26281e'; for (let i = 0; i < 4; i++) c.fillRect(-24.2, -12.8 + i * 0.6, 2.2, 0.3);
+    if (alive) {
+      const sw = sway * 3 + (tilt + pitch) * 20 * face;
+      c.strokeStyle = '#1d1f16'; c.lineWidth = 0.35; c.beginPath(); c.moveTo(-13, -19.6); c.quadraticCurveTo(-13 - sw * 0.3, -27, -13 - sw, -34); c.stroke();
+      c.fillStyle = band; c.fillRect(-13.6 - sw, -34.5, 1.4, 1.2);
+    }
+    c.strokeStyle = '#2a2c22'; c.lineWidth = 0.35; c.strokeRect(-19.4, -18.5, 4.2, 3.6);
+    for (let x = -18.6; x < -15.4; x += 1) { c.beginPath(); c.moveTo(x, -18.5); c.lineTo(x, -14.9); c.stroke(); }
+    c.restore();
+
+    // 2) Rohr (Richtung in Weltkoordinaten wie in der Simulation, ohne Neigung)
+    c.save();
+    c.translate(PHYS.PIVOT_X * face, PHYS.PIVOT_Y);
+    c.rotate(ang - tilt);
+    c.scale(TK, TK * face);
+    c.save(); c.translate(-recoil, 0);
+    const bg = c.createLinearGradient(0, -1.2, 0, 1.2);
+    bg.addColorStop(0, alive ? '#8a8c7a' : '#3a3a34'); bg.addColorStop(0.35, tkShade(cm.base, -0.35)); bg.addColorStop(1, '#1d1f16');
+    c.fillStyle = bg; c.strokeStyle = 'rgba(15,16,10,.8)'; c.lineWidth = 0.3;
+    c.fillRect(0, -1.15, TK_LEN, 2.3); c.strokeRect(0, -1.15, TK_LEN, 2.3);
+    for (const [x, w, r, bands] of [[4, 8, 1.45, 3], [12, 3.4, 1.85, 0], [16.5, 6, 1.35, 2], [TK_LEN - 1.5, 1.5, 1.3, 0]]) {
+      c.fillStyle = bg; c.fillRect(x, -r, w, r * 2); c.strokeRect(x, -r, w, r * 2);
+      for (let i = 1; i < bands; i++) { c.beginPath(); c.moveTo(x + (w * i) / bands, -r); c.lineTo(x + (w * i) / bands, r); c.stroke(); }
+    }
+    c.restore();
+    c.fillStyle = tkShade(cm.turret, -0.2); c.fillRect(-2.6, -2.6, 3.6, 5.2); c.strokeRect(-2.6, -2.6, 3.6, 5.2);
+    c.restore();
+
+    // 3) Turm mit Zielgerät, Nebelwerfern, Luke und Kommandant
+    c.save(); c.translate(0, 10); c.scale(face * TK, TK);
+    tkPlate(c, TK_TURRET, cm.turret, cm, { seed: (t.id || 1) * 11, edgeA: 3, edgeB: 4 });
+    c.strokeStyle = 'rgba(20,22,14,.5)'; c.lineWidth = 0.3; c.beginPath(); c.moveTo(-15.5, -16.4); c.lineTo(14.8, -16.4); c.stroke();
+    if (alive) { c.fillStyle = band; c.fillRect(-9, -16.1, 10, 1.3); }
+    c.fillStyle = tkShade(cm.turret, -0.25); c.fillRect(3, -22.3, 4.4, 1.8); c.fillStyle = alive ? '#9bc7d6' : '#2a2a26'; c.fillRect(6.6, -22, 0.7, 1.1);
+    c.fillStyle = '#26281e'; for (let i = 0; i < 3; i++) { c.save(); c.translate(9.5 + i * 1.3, -19.6); c.rotate(-0.6); c.fillRect(0, -0.4, 2.2, 0.8); c.restore(); }
+    if (alive) {
+      // Klecks-Kommandant schaut aus der Luke
+      const hx = -6.5, hy = -20.4 + (active ? Math.sin(now / 160) * 0.5 : 0);
+      c.save(); c.translate(hx, hy); c.scale(0.85, 0.85);
+      c.fillStyle = band; c.beginPath(); c.ellipse(0, 0, 4.2, 4.0, 0, Math.PI, 0); c.fill();
+      c.strokeStyle = 'rgba(0,0,0,.45)'; c.lineWidth = 0.6; c.stroke();
+      c.fillStyle = 'rgba(255,255,255,.4)'; c.beginPath(); c.ellipse(-1.6, -2.6, 1.2, 0.7, 0, 0, Math.PI * 2); c.fill();
+      const lookY = clamp(-aimDeg / 60, -1, 1) * 0.6;
+      for (const ex of [0.4, 2.6]) {
+        c.fillStyle = '#FFFFFF'; c.beginPath(); c.arc(ex, -1.6, 1.05, 0, Math.PI * 2); c.fill();
+        c.fillStyle = '#16160F'; c.beginPath(); c.arc(ex + 0.35, -1.6 + lookY, 0.55, 0, Math.PI * 2); c.fill();
+      }
+      drawHat(c, look && look.hat, 0, 0);
+      c.restore();
+    }
+    c.fillStyle = '#26281e'; c.beginPath(); c.ellipse(-6.5, -20.4, 4.2, 0.9, 0, 0, 6.283); c.fill();
+    c.restore();
+
     c.restore();
   }
 
@@ -1605,6 +1842,24 @@
       p.life++;
       const k = p.life / p.max;
       switch (p.type) {
+        case 'fire': {
+          p.x += p.vx; p.y += p.vy; p.vx *= 0.93; p.vy = p.vy * 0.93 - 0.03;
+          const rr = p.size * (0.7 + k * 0.6);
+          const fg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, rr);
+          fg.addColorStop(0, `rgba(255,240,180,${1 - k})`); fg.addColorStop(0.45, `rgba(255,140,40,${0.85 * (1 - k)})`); fg.addColorStop(1, 'rgba(160,50,20,0)');
+          ctx.globalAlpha = 1; ctx.fillStyle = fg; ctx.beginPath(); ctx.arc(p.x, p.y, rr, 0, Math.PI * 2); ctx.fill();
+          break;
+        }
+        case 'chunk': {
+          p.vy += g; p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+          if (solid(p.x, p.y + p.size * 0.5)) { p.y -= p.vy; p.vy *= -0.3; p.vx *= 0.6; p.vr *= 0.5; if (Math.abs(p.vy) < 0.4) { p.vy = 0; p.vx *= 0.8; } }
+          if (p.y > G.waterY + 4) p.life = p.max;
+          ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+          ctx.globalAlpha = k > 0.8 ? (1 - k) * 5 : 1; ctx.fillStyle = p.col; ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+          ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(-p.size / 2, p.size * 0.1, p.size, p.size * 0.4);
+          ctx.restore();
+          break;
+        }
         case 'spark':
           p.x += p.vx; p.y += p.vy; p.vy += g * 0.4; p.vx *= 0.96;
           ctx.globalAlpha = 1 - k; ctx.fillStyle = p.col; ctx.beginPath(); ctx.arc(p.x, p.y, p.size * (1 - k * 0.5), 0, Math.PI * 2); ctx.fill();

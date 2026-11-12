@@ -113,8 +113,8 @@
   const PHYS = {
     G: 0.2,                       // Schwerkraft px/Tick²
     speed: (power) => 2 + power * 0.15,   // Kraft 0..100 -> Mündungsgeschwindigkeit
-    MUZZLE: 18,                   // Abstand Drehpunkt -> Mündung
-    PIVOT_X: 7.0, PIVOT_Y: -4.8,  // Drehpunkt des Rohrs relativ zur Panzermitte (nach rechts schauend)
+    MUZZLE: 21,                   // Abstand Drehpunkt -> Mündung (= Rohrlänge des Kampfpanzers)
+    PIVOT_X: 11.5, PIVOT_Y: -4.8, // Drehpunkt des Rohrs relativ zur Panzermitte (nach rechts schauend)
     AIM_MIN: -15, AIM_MAX: 85,
     WINCH_RANGE: 260,             // Reichweite des Seilwinden-Hakens
     SLIDE_NY: -0.57,              // steiler als ca. 55°: Panzer rutscht ab
