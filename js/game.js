@@ -62,6 +62,7 @@
   function show(id) {
     for (const s of screens) $(s).classList.toggle('hidden', s !== id);
     document.body.classList.toggle('ingame', id === 'hud');
+    SND.music(id === 'hud' ? 'battle' : 'menu');
   }
   function toast(text, kind) {
     const el = document.createElement('div');
@@ -94,6 +95,13 @@
   const panOf = (x) => clamp(((x - cam.x) * zoomNow) / (innerWidth / 2), -1, 1) * 0.8;
   const volOf = (x, y) => clamp(1.2 - Math.hypot(x - cam.x, y - cam.y) / 1400, 0.35, 1);
 
+  // Hintergrundmusik (eigener Schalter, M schaltet trotzdem alles stumm)
+  let musicOn = store.get('sf_music') !== '0';
+  function setMusic(on) {
+    musicOn = on; store.set('sf_music', on ? '1' : '0');
+    SND.setMusic(on);
+    for (const id of ['btnMusic', 'btnMusic2']) $(id).textContent = on ? 'MUSIK: AN' : 'MUSIK: AUS';
+  }
   function setMuted(m) {
     muted = m; store.set('sf_mute', m ? '1' : '0');
     SND.setMuted(m);
@@ -767,6 +775,7 @@
     if (!G) return;
     if (e.code === 'KeyO') { toggleOverview(); return; }
     if (e.code === 'KeyM') { setMuted(!muted); return; }
+    if (e.code === 'KeyN') { setMusic(!musicOn); toast(musicOn ? 'Musik an' : 'Musik aus'); return; }
     if (e.code === 'Escape') {
       e.preventDefault();
       const open = ['weaponMenu', 'help', 'gameMenu'].find((id) => !$(id).classList.contains('hidden'));
@@ -898,6 +907,12 @@
     $('gameMenu').classList.add('hidden');
     leave();
   });
+  $('btnMusic').addEventListener('click', () => setMusic(!musicOn));
+  $('btnMusic2').addEventListener('click', () => setMusic(!musicOn));
+  // Browser erlauben Ton erst nach der ersten Berührung/Taste -> dann startet die Musik
+  const firstTouch = () => { SND.unlock(); removeEventListener('pointerdown', firstTouch, true); removeEventListener('keydown', firstTouch, true); };
+  addEventListener('pointerdown', firstTouch, true);
+  addEventListener('keydown', firstTouch, true);
   $('btnFull').addEventListener('click', () => {
     const d = document.documentElement;
     if (document.fullscreenElement) document.exitFullscreen();
@@ -1020,6 +1035,7 @@
   function onOver(m) {
     if (!G) return;
     overInfo = m;
+    SND.music('menu');
     releaseKeys();
     SND.engine(false);
     setTimeout(() => {
@@ -1916,6 +1932,7 @@
 
   // ---------- Start ----------
   setMuted(muted);
+  setMusic(musicOn);
   requestAnimationFrame(frame);
   // Zugang nur mit Passwort; ohne gespeicherten Schlüssel (ältere Version) einmal neu eingeben lassen
   const savedKey = store.get('sf_key');
