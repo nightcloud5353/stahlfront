@@ -2,7 +2,7 @@
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.SHARED = factory();
-})(typeof self !== 'undefined' ? self : this, function () {
+})(typeof self !== 'undefined' ? self : globalThis, function () {
   'use strict';
 
   // mode: 'fire'   = Winkel + Kraft einstellen, dann FEUER
@@ -121,7 +121,23 @@
     CONCRETE: 0.45,               // Beton wird nur zu diesem Anteil des Explosionsradius zerstört
   };
 
+  // Kryptografisch sichere Zufallszeichen (Raumcodes, Spieler-Tokens) statt Math.random().
+  // Verwirft Bytes oberhalb des größten Vielfachen der Alphabetlänge, damit jedes Zeichen gleich wahrscheinlich ist.
+  const ID_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  function randomId(n, chars) {
+    const abc = chars || ID_CHARS;
+    const lim = 256 - (256 % abc.length);
+    let s = '';
+    while (s.length < n) {
+      const buf = new Uint8Array(n * 2);
+      globalThis.crypto.getRandomValues(buf);
+      for (let i = 0; i < buf.length && s.length < n; i++) if (buf[i] < lim) s += abc[buf[i] % abc.length];
+    }
+    return s;
+  }
+
   return {
+    randomId,
     WEAPONS, CALLSIGNS, LINES, TEAM_COLORS, TEAM_NAMES, THEMES, MAPS, CAMOS, HATS, BOT_LEVELS, BOT_NAMES, PHYS,
     TANK_R: 10, W: 2000, H: 1000, MAX_PLAYERS: 6, PEER_PREFIX: 'stahlfront-v1-',
   };

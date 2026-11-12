@@ -6,11 +6,7 @@
   const S = root.SHARED;
   const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
-  function randomCode() {
-    let s = '';
-    for (let i = 0; i < 4; i++) s += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
-    return s;
-  }
+  const randomCode = () => S.randomId(4, CODE_CHARS);
   function normCode(c) { return String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4); }
 
   // Optional eigener PeerJS-Server (nur für Tests): ?peerhost=localhost&peerport=9000
@@ -178,4 +174,4 @@
   }
 
   root.NET = { host, join, normCode };
-})(typeof self !== 'undefined' ? self : this);
+})(typeof self !== 'undefined' ? self : globalThis);

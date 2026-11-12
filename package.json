@@ -1,0 +1,15 @@
+{
+  "name": "stahlfront",
+  "version": "1.12.0",
+  "private": true,
+  "description": "Rundenbasiertes Panzer-Artillerie-Spiel im Browser",
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "lint": "eslint js/ test/",
+    "check": "npm run lint && npm test"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.0",
+    "globals": "^15.15.0"
+  }
+}

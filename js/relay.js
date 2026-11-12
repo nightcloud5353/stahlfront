@@ -13,7 +13,7 @@
     const q = new URLSearchParams(location.search).get('relay');
     return q ? q.split(',') : DEFAULT_BROKERS;
   }
-  const rid = () => Math.random().toString(36).slice(2, 12);
+  const rid = () => root.SHARED.randomId(10);
   let KEY = null, SECRET = null;
   const hex = (buf) => [...new Uint8Array(buf)].map((x) => x.toString(16).padStart(2, '0')).join('');
   // Kanalname hängt vom Schlüssel ab: Fremde erkennen nicht einmal, welche Nachrichten zu euch gehören

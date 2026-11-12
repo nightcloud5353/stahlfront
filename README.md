@@ -35,5 +35,32 @@ Die Verbindung läuft über einen öffentlichen Internet-Server (MQTT) – das k
 
 ## Technik
 
-Reines HTML/CSS/JavaScript, keine Abhängigkeiten außer [PeerJS](https://peerjs.com) (MIT, liegt unter `js/`).
-`js/sim.js` = Spiellogik inkl. KI (läuft beim Gastgeber), `js/game.js` = Darstellung & Steuerung, `js/net.js` + `js/relay.js` = Verbindung, `js/sound.js` = Geräusche.
+Reines HTML/CSS/JavaScript ohne Build-Schritt, keine Abhängigkeiten außer [PeerJS](https://peerjs.com) (MIT, liegt unter `js/`).
+
+| Datei | Inhalt |
+|---|---|
+| `js/shared.js` | Waffen, Karten, Tarnmuster, Physik-Konstanten (Gastgeber + Darstellung) |
+| `js/sim-base.js` | Balancing-Werte und Hilfsfunktionen der Simulation |
+| `js/sim.js` | Simulation beim Gastgeber: Lobby, Züge, Spielende, Spielstand |
+| `js/sim-terrain.js` | Gelände erzeugen, Krater, Erdrutsche |
+| `js/sim-world.js` | Panzer, Fässer, Kisten: Platzierung, Fahren, Physik |
+| `js/sim-weapons.js` | Waffen, Geschosse, Explosionen, Napalm |
+| `js/sim-bot.js` | KI-Gegner |
+| `js/game.js` | Darstellung, HUD und Steuerung |
+| `js/tank-art.js` | Panzer zeichnen |
+| `js/net.js`, `js/relay.js` | Verbindung (Internet-Server bzw. WebRTC) |
+| `js/sound.js` | Geräusche und Musik |
+
+Die `sim-*.js`-Dateien erweitern alle dieselbe Klasse `StahlSim`; die Reihenfolge der `<script>`-Tags in `index.html` ist daher wichtig (`sim-base.js` → `sim.js` → übrige `sim-*.js`).
+
+### Tests und Prüfung
+
+Zum Spielen ist nichts davon nötig – nur für die Entwicklung (Node.js 20 oder neuer):
+
+```bash
+npm install
+npm test        # Simulation in Node: Lobby, Gelände, Schaden, Spielstand, komplette KI-Gefechte auf allen Karten
+npm run lint    # ESLint: Tippfehler bei Namen, doppelte Methoden usw.
+```
+
+Bei jedem Push laufen beide automatisch auf GitHub (Actions → „Prüfen“).
