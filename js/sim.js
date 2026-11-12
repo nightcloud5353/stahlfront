@@ -17,6 +17,7 @@
   const RETREAT = 2.5;         // Sekunden Rückzug nach dem Schuss
   const MAX_HP = 100;
   const SUDDEN_DEATH_ROUNDS = 7;
+  const SUDDEN_DEATH_CAVES = 5; // Höhlen: viel Deckung, Gefechte dauern sonst doppelt so lange
   const WATER_RISE = 24;      // px pro Runde (verteilt auf die Züge der noch lebenden Teams)
   const BARREL_R = 7;
   const CRATE_R = 8;
@@ -43,11 +44,11 @@
   const BOOM = {
     shell:   [40, 48, 6.2],
     bouncer: [40, 42, 6.2],   // unter der HE-Granate: dafür kaum Wind
-    cluster: [28, 22, 5.0],
-    bomblet: [21, 16, 4.4],
+    cluster: [28, 38, 5.0],
+    bomblet: [21, 20, 4.4],   // Splitter streuen weit – sonst schwächer als die HE-Granate
     drill:   [40, 52, 6.6],
     mine:    [34, 45, 7.0],
-    strike:  [28, 28, 5.0],
+    strike:  [28, 20, 5.0],   // trifft fast immer (Ziel anklicken) – daher pro Granate schwächer
     mg:      [6,  6,  1.4],   // 5 Kugeln = max. 30 (kein Wind, kein Zielen der Kraft)
     death:   [26, 12, 4.5],
     barrel:  [40, 30, 6.5],
@@ -1696,8 +1697,9 @@
           return;
         }
       }
-      if (!g.waterRaised && g.turnCount >= g.teams.length * SUDDEN_DEATH_ROUNDS) {
-        if (g.turnCount === g.teams.length * SUDDEN_DEATH_ROUNDS) this.sendMsg('HOCHWASSER – das Wasser steigt jede Runde!', 'warn');
+      const sdRounds = g.map === 'hoehlen' ? SUDDEN_DEATH_CAVES : SUDDEN_DEATH_ROUNDS;
+      if (!g.waterRaised && g.turnCount >= g.teams.length * sdRounds) {
+        if (g.turnCount === g.teams.length * sdRounds) this.sendMsg('HOCHWASSER – das Wasser steigt jede Runde!', 'warn');
         g.waterY = Math.round(g.waterY - WATER_RISE / Math.max(1, alive.length));
         g.waterRaised = true;
         g.settleT = 0;
