@@ -17,7 +17,7 @@
   const RETREAT = 2.5;         // Sekunden Rückzug nach dem Schuss
   const MAX_HP = 100;
   const SUDDEN_DEATH_ROUNDS = 7;
-  const WATER_RISE = 12;
+  const WATER_RISE = 24;      // px pro Runde (verteilt auf die Züge der noch lebenden Teams)
   const BARREL_R = 7;
   const CRATE_R = 8;
   const CRATE_EVERY = 3;
@@ -30,13 +30,13 @@
   // [Radius, Maximalschaden, Rückstoß]
   const BOOM = {
     shell:   [40, 48, 6.2],
-    bouncer: [44, 50, 6.6],
+    bouncer: [40, 42, 6.2],   // unter der HE-Granate: dafür kaum Wind
     cluster: [28, 22, 5.0],
     bomblet: [21, 16, 4.4],
     drill:   [40, 52, 6.6],
     mine:    [34, 45, 7.0],
-    strike:  [28, 22, 5.0],
-    mg:      [6,  8,  1.4],
+    strike:  [28, 28, 5.0],
+    mg:      [6,  6,  1.4],   // 5 Kugeln = max. 30 (kein Wind, kein Zielen der Kraft)
     death:   [26, 12, 4.5],
     barrel:  [40, 30, 6.5],
     crate:   [30, 20, 5.0],
@@ -502,6 +502,13 @@
       }
       const n = order.length, margin = 150, span = (W - 2 * margin) / n;
       const anyFloor = (x) => { const f = this.floorsAt(x); if (!f.length) return null; return g.map === 'hoehlen' ? pick(f) : f[0]; };
+      // fester Stand: Boden direkt unter der Mitte und links/rechts kaum Höhenunterschied
+      // (sonst berührt der Panzer nur eine steile Flanke und rutscht sofort ab – z. B. an Inselrändern)
+      const steady = (x, y) => {
+        if (!this.solid(x, y + R + 2)) return false;
+        const yl = this.groundBelow(x - 9, y), yr = this.groundBelow(x + 9, y);
+        return yl !== null && yr !== null && Math.abs(yl - yr) < 14;
+      };
       order.forEach((team, i) => {
         let pos = null;
         for (let a = 0; a < 80 && !pos; a++) {
@@ -509,13 +516,13 @@
           const x = clamp(margin + span * (i + 0.5) + rand(-span * spread, span * spread), 110, W - 110);
           const y = anyFloor(x);
           if (y === null || y > g.waterY - 45) continue;
-          if (a < 60 && this.normalAt(x, y + R, 6)[1] > PHYS.SLIDE_NY) continue;
+          if (a < 60 && (!steady(x, y) || this.normalAt(x, y + R, 6)[1] > PHYS.SLIDE_NY)) continue;
           if (g.tanks.some((t) => Math.abs(t.x - x) < 70 && Math.abs(t.y - y) < 60)) continue;
           pos = [x, y];
         }
         for (let a = 0; a < 300 && !pos; a++) {
           const x = rand(110, W - 110), y = anyFloor(x);
-          if (y !== null && y < g.waterY - 45 && !g.tanks.some((t) => Math.abs(t.x - x) < 40 && Math.abs(t.y - y) < 40)) pos = [x, y];
+          if (y !== null && y < g.waterY - 45 && (a >= 200 || steady(x, y)) && !g.tanks.some((t) => Math.abs(t.x - x) < 40 && Math.abs(t.y - y) < 40)) pos = [x, y];
         }
         if (!pos) pos = [W / 2, 100];
         const t = {
@@ -816,7 +823,7 @@
         }
         case 'strike': {
           for (let i = 0; i < 5; i++) {
-            const x = target.x + (i - 2) * 30 + rand(-4, 4);
+            const x = target.x + (i - 2) * 24 + rand(-4, 4);
             g.queue.push({ at: this.tickN + i * 7, p: { id: 0, type: 'strike', x, y: -60, vx: -g.wind * 0.6, vy: 3, owner: -1, age: 0, fuse: -1, src } });
           }
           this.broadcast({ t: 'fx', k: 'strike', x: Math.round(target.x), y: Math.round(target.y) });
@@ -889,7 +896,7 @@
       const r = Math.random();
       if (avail('cluster') && r < 0.18) w = 'cluster';
       else if (avail('drill') && r < 0.3) w = 'drill';
-      else if (r < 0.42) w = 'bouncer';
+      // Abpraller bewusst nicht: die Flugbahn-Suche unten kennt kein Abprallen + Zünder, die KI träfe damit fast nie
       // beste Lösung suchen
       const face = target.x < t.x ? -1 : 1;
       const tt = Object.assign({}, t, { face });
@@ -1362,7 +1369,7 @@
       }
       if (!g.waterRaised && g.turnCount >= g.teams.length * SUDDEN_DEATH_ROUNDS) {
         if (g.turnCount === g.teams.length * SUDDEN_DEATH_ROUNDS) this.sendMsg('HOCHWASSER – das Wasser steigt jede Runde!', 'warn');
-        g.waterY -= WATER_RISE;
+        g.waterY = Math.round(g.waterY - WATER_RISE / Math.max(1, alive.length));
         g.waterRaised = true;
         g.settleT = 0;
         return;
