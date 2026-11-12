@@ -25,6 +25,7 @@
     mine: '<path d="M4 18 Q4 11 12 11 Q20 11 20 18 Z"/><path d="M2 18 H22 M12 11 V7 M9 3.5 L12 7 L15 3.5"/>',
     strike: '<path d="M6 2 V9 M12 2 V9 M18 2 V9 M4 7 L6 9 L8 7 M10 7 L12 9 L14 7 M16 7 L18 9 L20 7"/><path d="M2 21 H22 M7 21 Q12 13 17 21"/>',
     ram: '<path d="M2 8 H7 M1 12 H7 M2 16 H7"/><path d="M10 6 H16 L21 12 L16 18 H10 Z"/>',
+    winch: '<circle cx="5" cy="19" r="2.5"/><path d="M7 17 L15 9"/><path d="M15 9 Q21 3 19 9 Q17 13 14 11"/>',
     repair: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 7.5 V16.5 M7.5 12 H16.5"/>',
     skip: '<path d="M4 5 H11 L4 12 H11 M13 12 H20 L13 19 H20"/>',
   };
@@ -635,7 +636,7 @@
       setText('wAmmo', ammo < 0 ? '∞' : String(ammo));
       const acting = m.ph === 'turn';
       $('btnFire').disabled = !acting || wpn.mode === 'target';
-      $('btnFire').firstChild.textContent = wpn.mode === 'target' ? 'ZIEL' : wpn.id === 'repair' || wpn.id === 'skip' ? 'OK' : 'FEUER';
+      $('btnFire').firstChild.textContent = wpn.mode === 'target' ? 'ZIEL' : wpn.id === 'winch' ? 'HAKEN' : wpn.id === 'repair' || wpn.id === 'skip' ? 'OK' : 'FEUER';
       $('btnWeapon').disabled = !acting;
       for (const b of document.querySelectorAll('.cbtn.sm')) b.disabled = !acting;
       const needsAim = wpn.mode === 'fire' || wpn.mode === 'aim';
@@ -672,7 +673,7 @@
       const ammo = m.am[i];
       const locked = w.from > m.rd;
       b.disabled = ammo === 0 || locked;
-      b.innerHTML = `<svg viewBox="0 0 24 24">${ICONS[w.id]}</svg>${esc(w.name)}<i>${locked ? 'ab Zug ' + w.from : ammo < 0 ? '∞' : ammo}</i><kbd>${(i + 1) % 10}</kbd>`;
+      b.innerHTML = `<svg viewBox="0 0 24 24">${ICONS[w.id]}</svg>${esc(w.name)}<i>${locked ? 'ab Zug ' + w.from : ammo < 0 ? '∞' : ammo}</i><kbd>${w.id === 'winch' ? 'R' : (WEAPONS.filter((x) => x.id !== 'winch').indexOf(w) + 1) % 10}</kbd>`;
       b.addEventListener('click', () => { pickWeapon(w.id); $('weaponMenu').classList.add('hidden'); });
       b.addEventListener('pointerenter', () => { $('winfo').innerHTML = `<b>${esc(w.name)}:</b> ${esc(w.info)}`; });
       grid.appendChild(b);
@@ -750,8 +751,9 @@
     if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) fire(); return; }
     if (e.code === 'Tab') { e.preventDefault(); toggleWeapons(); return; }
     if (e.code === 'KeyP') { if (snapCur && snapCur.m.sw) send({ t: 'switch' }); return; }
+    if (e.code === 'KeyR') { pickWeapon('winch'); return; }
     const dm = /^(?:Digit|Numpad)(\d)$/.exec(e.code);
-    if (dm) { const i = (Number(dm[1]) + 9) % 10; if (WEAPONS[i]) pickWeapon(WEAPONS[i].id); }
+    if (dm) { const order = WEAPONS.filter((w) => w.id !== 'winch'); const i = (Number(dm[1]) + 9) % 10; if (order[i]) pickWeapon(order[i].id); }
   });
   window.addEventListener('keyup', (e) => { const k = KEYMAP[e.code]; if (k) setKey(k, false); });
   window.addEventListener('blur', () => { if (Object.values(keys).some(Boolean)) releaseKeys(); });
@@ -957,6 +959,12 @@
         break;
       }
       case 'bounce': SND.bounce(panOf(m.x)); break;
+      case 'hook':
+        SND.mg(panOf(m.x1));
+        tracers.push({ x1: m.x1, y1: m.y1, x2: m.x2, y2: m.y2, t: performance.now() });
+        if (m.hit) { SND.metal(panOf(m.x2)); dirt(m.x2, m.y2, 4); }
+        break;
+      case 'winchEnd': SND.click(); break;
       case 'trigger': SND.beep(); break;
       case 'drill': SND.drill(panOf(m.x)); break;
       case 'strike': SND.whistle(); marks.push({ x: m.x, y: m.y, t: performance.now(), strike: true }); break;
@@ -1126,7 +1134,17 @@
     const lookOf = (t) => { const info = G.tankInfo[t.id]; const team = info ? G.teams[info.team] : null; return [team ? team.look : null, team ? S.TEAM_COLORS[team.color] : '#888']; };
     for (const t of list) if (!t.alive) { const [lk, col] = lookOf(t); drawTank(ctx, t, lk, col, now, false); }
     for (const t of list) if (t.alive) { const [lk, col] = lookOf(t); drawTank(ctx, t, lk, col, now, t.id === m.tb && (m.ph === 'turn' || m.ph === 'retreat')); }
-    if (myTurn && m.ph === 'turn') drawAimHelp(m);
+    if (myTurn && m.ph === 'turn' && !m.wn) drawAimHelp(m);
+    if (m.wn) {
+      // Seil der Winde vom Panzer zum Haken
+      const t = interp('tanks', m.tb);
+      if (t) {
+        ctx.strokeStyle = '#2A2A24'; ctx.lineWidth = 1.4;
+        ctx.beginPath(); ctx.moveTo(t.x, t.y - 4); ctx.lineTo(m.wn[0], m.wn[1]); ctx.stroke();
+        ctx.strokeStyle = '#9AA0A8'; ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.arc(m.wn[0], m.wn[1], 2.6, 0, Math.PI * 1.5); ctx.stroke();
+      }
+    }
     for (const p0 of snapCur.proj.values()) drawProj(interp('proj', p0.id), now);
     tracers = tracers.filter((t) => now - t.t < 220);
     for (const t of tracers) {
@@ -1396,6 +1414,16 @@
     const a = (t.aim * Math.PI) / 180;
     const dx = t.face * Math.cos(a), dy = -Math.sin(a);
     let x = ox + dx * PHYS.MUZZLE, y = oy + dy * PHYS.MUZZLE;
+    if (w.id === 'winch') {
+      // Reichweite des Hakens + wo er sich einhaken würde
+      let ex = x, ey = y, hit = false;
+      for (let i = 0; i < PHYS.WINCH_RANGE; i += 2) { ex += dx * 2; ey += dy * 2; if (solid(ex, ey)) { hit = true; break; } }
+      ctx.strokeStyle = hit ? 'rgba(200,170,120,.9)' : 'rgba(200,170,120,.45)'; ctx.setLineDash([3, 4]); ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ex, ey); ctx.stroke(); ctx.setLineDash([]);
+      ctx.strokeStyle = hit ? '#8FB04A' : '#D9483B'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(ex, ey, 4, 0, Math.PI * 2); ctx.stroke();
+      return;
+    }
     if (w.mode === 'aim') {
       ctx.strokeStyle = 'rgba(224,165,38,.75)'; ctx.setLineDash([4, 5]); ctx.lineWidth = 1.2;
       ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + dx * 170, y + dy * 170); ctx.stroke(); ctx.setLineDash([]);

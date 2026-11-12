@@ -19,6 +19,7 @@
     { id: 'mine',    name: 'Mine',             short: 'MINE',       ammo: 2,  from: 1, mode: 'now',    info: 'Wird hinter dir abgelegt. Scharf nach 1 s, explodiert bei Kontakt.' },
     { id: 'strike',  name: 'Artillerieschlag', short: 'ARTILLERIE', ammo: 1,  from: 3, mode: 'target', info: 'Ziel auf der Karte anklicken – 5 Granaten fallen vom Himmel.' },
     { id: 'ram',     name: 'Rammstoß',         short: 'RAMMEN',     ammo: -1, from: 1, mode: 'now',    info: 'Vollgas nach vorn. Schiebt einen Gegner direkt vor dir weg – ideal Richtung Wasser.' },
+    { id: 'winch',   name: 'Seilwinde',        short: 'SEILWINDE',  ammo: 3,  from: 1, mode: 'aim',    info: 'Haken in Rohrrichtung abschießen – die Winde zieht dich hin. Beendet den Zug NICHT, danach kannst du noch schießen.' },
     { id: 'repair',  name: 'Reparatur',        short: 'REPARATUR',  ammo: 1,  from: 1, mode: 'now',    info: '+30 Panzerung, beendet aber deinen Zug.' },
     { id: 'skip',    name: 'Aussetzen',        short: 'AUSSETZEN',  ammo: -1, from: 1, mode: 'now',    info: 'Zug sofort beenden.' },
   ];
@@ -87,6 +88,7 @@
     ram: ['Aus dem Weg!', 'Platz da!', 'Rammbock-Zeit!'],
     mine: ['Vorsicht, Stufe!', 'Kleines Geschenk…', 'Nicht drauftreten!'],
     strike: ['Luftpost!', 'Achtung, von oben!', 'Ich hab Freunde da oben!'],
+    winch: ['Festhalten!', 'Abschleppdienst!', 'Hoch mit dir!'],
     repair: ['Klebeband hält alles!', 'Wie neu!', 'Ein bisschen Spucke…'],
     hurry: ['Schnell, schnell!', 'Die Uhr tickt!', 'Äh… äh…'],
     win: ['Sieg! Kuchen für alle!', 'Ich bin der Größte!', 'Gut gekämpft, Leute!', 'Unbesiegbar! Yallah!'],
@@ -106,6 +108,8 @@
     MUZZLE: 18,                   // Abstand Drehpunkt -> Mündung
     PIVOT_X: 7.0, PIVOT_Y: -4.8,  // Drehpunkt des Rohrs relativ zur Panzermitte (nach rechts schauend)
     AIM_MIN: -15, AIM_MAX: 85,
+    WINCH_RANGE: 260,             // Reichweite des Seilwinden-Hakens
+    SLIDE_NY: -0.57,              // steiler als ca. 55°: Panzer rutscht ab
     CONCRETE: 0.45,               // Beton wird nur zu diesem Anteil des Explosionsradius zerstört
   };
 

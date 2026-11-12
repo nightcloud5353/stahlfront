@@ -509,6 +509,7 @@
           const x = clamp(margin + span * (i + 0.5) + rand(-span * spread, span * spread), 110, W - 110);
           const y = anyFloor(x);
           if (y === null || y > g.waterY - 45) continue;
+          if (a < 60 && this.normalAt(x, y + R, 6)[1] > PHYS.SLIDE_NY) continue;
           if (g.tanks.some((t) => Math.abs(t.x - x) < 70 && Math.abs(t.y - y) < 60)) continue;
           pos = [x, y];
         }
@@ -595,7 +596,7 @@
       g.stats = { team: g.turnTeam, dmg: 0, self: 0, kills: 0 };
       g.moved = false; g.turnHit = false;
       g.weapon = team.ammo[team.lastWeapon] !== 0 && WMAP[team.lastWeapon].from <= team.turns ? team.lastWeapon : 'shell';
-      g.fuel = 100; g.driveV = 0; g.burst = null; g.fired = false;
+      g.fuel = 100; g.driveV = 0; g.burst = null; g.fired = false; g.winch = null;
       g.input = noInput();
       g.hold = { u: 0, d: 0, pu: 0, pd: 0 };
       const online = this.teamOnline(team);
@@ -697,14 +698,14 @@
           return;
         }
         case 'fire': {
-          if (!canAct) return;
+          if (!canAct || g.winch) return;
           const w = WMAP[g.weapon];
           if (w.mode === 'target') return;
           this.useWeapon(w, null);
           return;
         }
         case 'target': {
-          if (!canAct) return;
+          if (!canAct || g.winch) return;
           const w = WMAP[g.weapon];
           if (w.mode !== 'target' || typeof m.x !== 'number' || typeof m.y !== 'number') return;
           this.useWeapon(w, { x: clamp(m.x, 0, W), y: clamp(m.y, 0, H) });
@@ -724,9 +725,66 @@
       return [t.face * Math.cos(a), -Math.sin(a)];
     }
 
+    // Seilwinde: Haken in Rohrrichtung, die Winde zieht den Panzer hin. Der Zug geht danach weiter.
+    useWinch(t, team) {
+      const g = this.g;
+      if (g.winch) return;
+      const [px, py] = this.pivot(t);
+      const [dx, dy] = this.aimDir(t);
+      let x = px + dx * PHYS.MUZZLE, y = py + dy * PHYS.MUZZLE, hit = false;
+      for (let i = 0; i < PHYS.WINCH_RANGE; i += 2) {
+        x += dx * 2; y += dy * 2;
+        if (x < 0 || x >= W || y < 0 || y >= H) break;
+        if (this.solid(x, y)) { hit = true; break; }
+      }
+      this.broadcast({ t: 'fx', k: 'hook', x1: r1(px), y1: r1(py), x2: r1(x), y2: r1(y), hit: hit ? 1 : 0 });
+      if (!hit) { this.sendMsg('Der Haken findet keinen Halt – näher ran oder anders zielen', 'err'); return; }
+      if (team.ammo.winch > 0) team.ammo.winch--;
+      g.winch = { ax: x - dx * 3, ay: y - dy * 3, t: 0, stuck: 0 };
+      g.moved = true;
+      g.input = noInput();
+      t.grounded = false; t.vx = 0; t.vy = 0;
+      g.weapon = team.ammo[team.lastWeapon] !== 0 && team.lastWeapon !== 'winch' ? team.lastWeapon : 'shell';
+      this.say(t, 'winch', 0, 0.7);
+    }
+    updateWinch() {
+      const g = this.g, w = g.winch, t = g.active;
+      w.t++;
+      const ddx = w.ax - t.x, ddy = w.ay - t.y, d = Math.hypot(ddx, ddy);
+      if (!t.alive || d < R + 5 || w.t > 220 || w.stuck > 14) {
+        g.winch = null;
+        // nahe einer Kante? -> auf die Kante hochziehen
+        let best = null;
+        for (const ox of [0, 8, -8, 16, -16, 24, -24]) {
+          const x = w.ax + ox * t.face;
+          for (let y = w.ay - 60; y <= w.ay + 12; y++) {
+            if (!this.circleHits(x, y, R) && this.circleHits(x, y + 1, R)) {
+              const dd = Math.hypot(x - t.x, y - t.y);
+              if (!best || dd < best.d) best = { x, y, d: dd };
+              break;
+            }
+          }
+        }
+        if (best && best.d < 75) { t.x = best.x; t.y = best.y; t.grounded = true; t.vx = 0; t.vy = 0; }
+        else { t.vx = (ddx / (d || 1)) * 0.5; t.vy = 0; t.grounded = false; }
+        t.safeFall = true; // Seil lässt ab: kein Fallschaden
+        this.broadcast({ t: 'fx', k: 'winchEnd', id: t.id });
+        return;
+      }
+      const sp = Math.min(3.2, 0.6 + w.t * 0.12);
+      const nx = t.x + (ddx / d) * sp, ny = t.y + (ddy / d) * sp;
+      if (!this.circleHits(nx, ny, R)) { t.x = nx; t.y = ny; w.stuck = 0; }
+      else if (!this.circleHits(nx, t.y - 2, R)) { t.x = nx; t.y -= 2; }
+      else if (!this.circleHits(t.x, ny, R)) t.y = ny;
+      else w.stuck++;
+      t.vx = 0; t.vy = 0; t.grounded = false;
+      if (t.y > g.waterY + 4) g.winch = null;
+    }
+
     useWeapon(w, target) {
       const g = this.g, t = g.active, team = g.teams[g.turnTeam];
       if (team.ammo[w.id] === 0 || w.from > team.turns) return;
+      if (w.id === 'winch') return this.useWinch(t, team);
       if (team.ammo[w.id] > 0) team.ammo[w.id]--;
       team.lastWeapon = w.id;
       t.aim = Math.round(t.aim); t.power = Math.round(t.power);
@@ -915,6 +973,7 @@
         g.chain = g.chain.filter((c) => c.at > this.tickN);
         for (const c of due) { const [r, d, k] = BOOM[c.kind]; this.explode(c.x, c.y, r, d, k, c.kind, c.src); }
       }
+      if (g.winch && g.active) this.updateWinch();
       for (const t of g.tanks) this.updateTank(t);
       for (const o of g.objs) this.updateObj(o);
       for (const p of g.proj.slice()) if (!p.dead) this.updateProj(p);
@@ -940,6 +999,7 @@
 
     control(t) {
       const g = this.g, inp = g.input;
+      if (g.winch) return;
       if (g.phase === 'turn') {
         const rate = (h) => (h < 18 ? 0 : Math.min(1.6, 0.25 + (h - 18) * 0.03));
         if (inp.u && !inp.d) { g.hold.u++; t.aim = clamp(t.aim + rate(g.hold.u), PHYS.AIM_MIN, PHYS.AIM_MAX); }
@@ -964,8 +1024,13 @@
       } else g.driveV = 0;
     }
 
-    physics(b, r, onImpact) {
+    physics(b, r, onImpact, grip) {
       if (b.grounded && !this.circleHits(b.x, b.y + 1, r)) { b.grounded = false; b.vx = 0; b.vy = 0; }
+      // zu steil? -> abrutschen (außer der Panzer fährt gerade selbst: die Ketten greifen)
+      if (b.grounded && !grip && (this.tickN + (b.id || 0)) % 4 === 0) {
+        const [, ny] = this.normalAt(b.x, b.y + r, 6);
+        if (ny > PHYS.SLIDE_NY) { b.grounded = false; b.vx = 0; b.vy = 0; b.sliding = 0; }
+      }
       if (b.grounded) return;
       b.vy = Math.min(b.vy + G, b.chute ? 1.8 : 14);
       b.vx = b.chute ? this.g.wind * 0.5 : b.vx * 0.995;
@@ -976,8 +1041,14 @@
         const [ax, ay] = this.normalAt(nx, ny, r + 3);
         const impact = -(b.vx * ax + b.vy * ay);
         if (onImpact) onImpact(impact);
-        if (ay < -0.45 || ++b.bounces > 30) { b.grounded = true; b.vx = 0; b.vy = 0; b.bounces = 0; b.chute = false; }
-        else {
+        const dot0 = b.vx * ax + b.vy * ay;
+        if (ay < PHYS.SLIDE_NY || ++b.bounces > 60) { b.grounded = true; b.vx = 0; b.vy = 0; b.bounces = 0; b.chute = false; }
+        else if (ay < -0.05 && impact < 3) {
+          // steiler Hang: entlang der Oberfläche abrutschen statt abprallen
+          if (dot0 < 0) { b.vx -= dot0 * ax; b.vy -= dot0 * ay; }
+          b.vx *= 0.97; b.vy *= 0.97;
+          b.x += ax * 0.5; b.y += ay * 0.5;
+        } else {
           const dot = b.vx * ax + b.vy * ay;
           if (dot < 0) { b.vx = (b.vx - 2 * dot * ax) * 0.3; b.vy = (b.vy - 2 * dot * ay) * 0.3; }
           else { b.x += ax; b.y += ay; }
@@ -1004,9 +1075,11 @@
     updateTank(t) {
       const g = this.g;
       if (t.drowned) return;
-      this.physics(t, R, (impact) => {
+      if (g.winch && t === g.active) { /* wird gerade von der Seilwinde gezogen */ } else this.physics(t, R, (impact) => {
+        if (t.safeFall) return;
         if (t.alive && impact > FALL_SAFE) this.damage(t, Math.round((impact - FALL_SAFE) * FALL_DMG), null);
-      });
+      }, t === g.active && g.input && (g.input.l || g.input.r));
+      if (t.grounded && t.safeFall) t.safeFall = false;
       if (t.grounded) {
         const yl = this.groundBelow(t.x - 9, t.y), yr = this.groundBelow(t.x + 9, t.y);
         const target = yl !== null && yr !== null ? clamp(Math.atan2(yr - yl, 18), -0.6, 0.6) : 0;
@@ -1122,14 +1195,28 @@
       const dx = t.face * Math.cos(spread), dy = -Math.sin(spread);
       let x = px + dx * PHYS.MUZZLE, y = py + dy * PHYS.MUZZLE;
       const sx = x, sy = y;
-      let hit = false;
+      let hit = false, target = null;
       for (let i = 0; i < 900; i++) {
         x += dx; y += dy;
         if (x < 0 || x > W || y < -200 || y > H) break;
-        if (this.solid(x, y) || this.hitsTank(x, y, { owner: t.id, age: 0 })) { hit = true; break; }
+        if (this.solid(x, y)) { hit = true; break; }
+        target = this.hitsTank(x, y, { owner: t.id, age: 0 });
+        if (target) { hit = true; break; }
       }
       this.broadcast({ t: 'fx', k: 'tracer', x1: r1(sx), y1: r1(sy), x2: r1(x), y2: r1(y) });
-      if (hit) { const [r, d, k] = BOOM.mg; this.explode(x, y, r, d, k, 'mg', src); }
+      if (!hit) return;
+      const [r, d, k] = BOOM.mg;
+      if (target && target.cs !== undefined && target.alive) {
+        // direkter Treffer: voller Schaden + kleiner Stoß (die Mini-Explosion allein erreicht die Panzermitte nicht)
+        target.vx += dx * k; target.vy += dy * k - 0.6; target.grounded = false;
+        this.carve(x, y, r);
+        this.broadcast({ t: 'boom', x: Math.round(x), y: Math.round(y), r, k: 'mg' });
+        this.damage(target, d, src);
+        if (src && target.team !== src.team) {
+          const st = this.g.teams[src.team].st, dist = Math.hypot(target.x - src.ox, target.y - src.oy);
+          if (dist > st.far) st.far = Math.round(dist);
+        }
+      } else this.explode(x, y, r, d, k, 'mg', src);
     }
 
     explode(x, y, r, dmg, knock, kind, src) {
@@ -1217,7 +1304,7 @@
 
     stable() {
       const g = this.g;
-      if (g.queue.length || g.burst || g.chain.length) return false;
+      if (g.queue.length || g.burst || g.chain.length || g.winch) return false;
       if (g.proj.some((p) => !(p.type === 'mine' && p.rest && !p.triggered))) return false;
       if (g.objs.some((o) => o.alive && !o.grounded)) return false;
       return g.tanks.every((t) => !t.alive || t.grounded);
@@ -1386,7 +1473,7 @@
       this.broadcast({
         t: 's', ph: g.phase, tm: g.timer === Infinity ? -1 : Math.ceil(g.timer), tt: g.turnTeam, tb: g.active ? g.active.id : 0,
         wi: Math.round(g.wind * 10), wp: g.weapon, fu: Math.round(g.fuel), am, wy: g.waterY, sl: this.slow > 0 ? 1 : 0,
-        rd: team ? team.turns : 0, sw: !g.fired && !g.moved && g.phase === 'turn' && team && !team.bot && team.tanks.filter((k) => k.alive).length > 1 ? 1 : 0,
+        rd: team ? team.turns : 0, wn: g.winch ? [r1(g.winch.ax), r1(g.winch.ay)] : 0, sw: !g.fired && !g.moved && g.phase === 'turn' && team && !team.bot && team.tanks.filter((k) => k.alive).length > 1 ? 1 : 0,
         o: g.objs.map((o) => [o.id, o.kind === 'crate' ? 'c' : 'b', r1(o.x), r1(o.y), o.chute ? 1 : 0]),
         b: g.tanks.map((t) => [t.id, r1(t.x), r1(t.y), t.hp, t.face, r1(t.aim), t.alive ? 1 : 0, Math.round(t.tilt * 100), t.drowned ? 1 : 0, Math.round(t.power), t.grounded ? 1 : 0]),
         p: g.proj.map((p) => [p.id, p.type, r1(p.x), r1(p.y), r1(p.vx), r1(p.vy), p.fuse > 0 ? Math.ceil(p.fuse / 60) : 0, p.armed ? 1 : 0]),
