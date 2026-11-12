@@ -1,6 +1,8 @@
 // STAHLFRONT – Verbindung über einen öffentlichen Internet-Server (MQTT über WebSocket).
 // Funktioniert in jedem Netz (auch wenn Router Direktverbindungen blockieren).
 // Gastgeber und Mitspieler tauschen Nachrichten über "Themen" aus, die vom Raumcode abhängen.
+// Alle Nachrichten sind mit AES-256-GCM verschlüsselt. Der Schlüssel wird beim Passwort-Eintippen
+// aus dem Passwort abgeleitet (PBKDF2) – ohne Passwort sieht man auf dem Server nur Zeichensalat.
 (function (root) {
   'use strict';
   const DEFAULT_BROKERS = ['wss://broker.hivemq.com:8884/mqtt', 'wss://broker.emqx.io:8084/mqtt'];
@@ -12,7 +14,28 @@
     return q ? q.split(',') : DEFAULT_BROKERS;
   }
   const rid = () => Math.random().toString(36).slice(2, 12);
-  const topicBase = (code) => `stahlfront/v1/${code}/r7k2`;
+  let KEY = null, SECRET = null;
+  const hex = (buf) => [...new Uint8Array(buf)].map((x) => x.toString(16).padStart(2, '0')).join('');
+  // Kanalname hängt vom Schlüssel ab: Fremde erkennen nicht einmal, welche Nachrichten zu euch gehören
+  const topicBase = (code) => `sf2/${SECRET.slice(0, 20)}/${code}`;
+  async function setKey(b64) {
+    if (!b64 || !root.crypto || !crypto.subtle) { KEY = null; SECRET = null; return false; }
+    const raw = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    KEY = await crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
+    SECRET = hex(await crypto.subtle.digest('SHA-256', concat([raw, enc.encode('stahlfront-topics')])));
+    return true;
+  }
+  async function seal(obj) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, KEY, enc.encode(JSON.stringify(obj)));
+    return concat([iv, new Uint8Array(ct)]);
+  }
+  async function open(bytes) {
+    try {
+      const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytes.subarray(0, 12) }, KEY, bytes.subarray(12));
+      return JSON.parse(dec.decode(pt));
+    } catch (e) { return null; } // falscher Schlüssel / kaputt -> ignorieren
+  }
 
   // ---------- minimaler MQTT-3.1.1-Client (QoS 0) ----------
   function concat(parts) {
@@ -28,7 +51,9 @@
   class Mqtt {
     constructor(url, onMsg, onDown) {
       this.url = url; this.onMsg = onMsg; this.onDown = onDown;
-      this.ready = false; this.closed = false; this.buf = new Uint8Array(0); this.pid = 1; this.subs = [];
+      this.ready = false; this.closed = false; this.buf = new Uint8Array(0); this.pid = 1;
+      // Ver- und Entschlüsseln ist asynchron -> Warteschlangen halten die Reihenfolge der Nachrichten
+      this.outQ = Promise.resolve(); this.inQ = Promise.resolve();
     }
     connect(onUp) {
       let ws;
@@ -59,7 +84,10 @@
       const id = this.pid++ & 0xffff;
       this.raw(packet(0x82, concat([Uint8Array.of(id >> 8, id & 255), mstr(topic), Uint8Array.of(0)])));
     }
-    pub(topic, obj) { this.raw(packet(0x30, concat([mstr(topic), enc.encode(JSON.stringify(obj))]))); }
+    pub(topic, obj) {
+      const t = mstr(topic);
+      this.outQ = this.outQ.then(() => seal(obj)).then((body) => this.raw(packet(0x30, concat([t, body])))).catch(() => {});
+    }
     feed(chunk) {
       this.buf = this.buf.length ? concat([this.buf, chunk]) : chunk;
       for (;;) {
@@ -76,10 +104,8 @@
           const tl = (body[0] << 8) | body[1];
           const topic = dec.decode(body.subarray(2, 2 + tl));
           const qos = (b[0] >> 1) & 3;
-          const payload = body.subarray(2 + tl + (qos ? 2 : 0));
-          let msg = null;
-          try { msg = JSON.parse(dec.decode(payload)); } catch (e) { /* kaputt */ }
-          if (msg) this.onMsg(topic, msg);
+          const payload = body.slice(2 + tl + (qos ? 2 : 0));
+          this.inQ = this.inQ.then(() => open(payload)).then((msg) => { if (msg && this.onMsg) this.onMsg(topic, msg); }).catch(() => {});
         }
       }
     }
@@ -101,6 +127,7 @@
   // ---------- Gastgeber ----------
   // Lauscht auf allen Servern gleichzeitig (damit jeder Mitspieler einen findet) und verbindet bei Abbruch neu
   function host(code, sim, cb) {
+    if (!KEY) { setTimeout(() => cb.onFail && cb.onFail(), 0); return { close() {} }; }
     const base = topicBase(code);
     const conns = new Map(); // Mitspieler-ID -> { conn, mq, to, seen }
     const live = new Set();
@@ -164,8 +191,9 @@
 
   // ---------- Mitspieler ----------
   function join(code, cb) {
-    const base = topicBase(code), me = rid();
     const link = { send() {}, onmessage: null, onclose: null, close() {} };
+    if (!KEY) { setTimeout(() => cb.onError && cb.onError('relay-unreachable'), 0); return { link, cancel() { cb.onError = null; } }; }
+    const base = topicBase(code), me = rid();
     let mq = null, opened = false, done = false, lastHost = 0, hiTimer = 0, watch = 0, pinger = 0;
     const finish = (err) => {
       if (done) return;
@@ -195,5 +223,5 @@
     return { link, cancel() { cb.onError = null; finish(); } };
   }
 
-  root.RELAY = { host, join };
+  root.RELAY = { host, join, setKey, hasKey: () => !!KEY };
 })(typeof self !== 'undefined' ? self : this);

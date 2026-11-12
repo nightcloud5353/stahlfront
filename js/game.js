@@ -128,11 +128,23 @@
     }
     return Hh.map((v) => (v >>> 0).toString(16).padStart(8, '0')).join('');
   }
+  // Schlüssel für die verschlüsselte Internet-Verbindung aus dem Passwort ableiten (das Passwort selbst wird nicht gespeichert)
+  async function deriveKey(pw) {
+    if (!window.crypto || !crypto.subtle) return null;
+    const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveBits']);
+    const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: new TextEncoder().encode('stahlfront-relay-v1'), iterations: 150000, hash: 'SHA-256' }, base, 256);
+    return btoa(String.fromCharCode(...new Uint8Array(bits)));
+  }
   $('gateForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const h = await sha('stahlfront:' + $('pw').value.trim().toLowerCase());
-    if (h === PW_HASH) { store.set('sf_pw', h); toMenu(); }
-    else { $('gateErr').textContent = 'Falsches Passwort'; $('pw').select(); }
+    const pw = $('pw').value.trim().toLowerCase();
+    const h = await sha('stahlfront:' + pw);
+    if (h !== PW_HASH) { $('gateErr').textContent = 'Falsches Passwort'; $('pw').select(); return; }
+    store.set('sf_pw', h);
+    const key = await deriveKey(pw);
+    if (key) { store.set('sf_key', key); await window.RELAY.setKey(key); }
+    $('pw').value = '';
+    toMenu();
   });
 
   // ---------- Hauptmenü ----------
@@ -1511,5 +1523,12 @@
   // ---------- Start ----------
   setMuted(muted);
   requestAnimationFrame(frame);
-  if (store.get('sf_pw') === PW_HASH) toMenu(); else show('gate');
+  // Zugang nur mit Passwort; ohne gespeicherten Schlüssel (ältere Version) einmal neu eingeben lassen
+  const savedKey = store.get('sf_key');
+  if (store.get('sf_pw') === PW_HASH && (savedKey || !(window.crypto && crypto.subtle))) {
+    window.RELAY.setKey(savedKey).then(() => toMenu());
+  } else {
+    if (store.get('sf_pw') === PW_HASH) $('gateErr').textContent = 'Neu: verschlüsselte Verbindung – bitte das Passwort einmal neu eingeben.';
+    show('gate');
+  }
 })();

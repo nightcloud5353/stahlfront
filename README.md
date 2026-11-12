@@ -16,7 +16,7 @@ Rundenbasiertes Panzer-Artillerie-Spiel für 2–6 Spieler – komplett im Brows
 
 Bricht beim Gastgeber etwas ab (Tab zu, Absturz), auf der Seite im Hauptmenü **FORTSETZEN** klicken: Das Gefecht geht mit demselben Raumcode weiter, die Mitspieler verbinden sich automatisch neu.
 
-Die Verbindung läuft über einen öffentlichen Internet-Server (MQTT) – das klappt in jedem Netz, auch wenn jeder zu Hause sitzt. Ist der Server nicht erreichbar, wird automatisch eine Direktverbindung (WebRTC) versucht.
+Die Verbindung läuft über einen öffentlichen Internet-Server (MQTT) – das klappt in jedem Netz, auch wenn jeder zu Hause sitzt. Ist der Server nicht erreichbar, wird automatisch eine Direktverbindung (WebRTC) versucht. Alle Nachrichten sind mit dem Spiel-Passwort verschlüsselt (AES-256-GCM, Schlüssel per PBKDF2 aus dem Passwort) – auf dem Server ist nur Zeichensalat zu sehen.
 
 ## Probleme?
 
