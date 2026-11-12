@@ -189,7 +189,7 @@
     setSettings(p, m) {
       if (p.id !== this.hostPid || this.phase !== 'lobby') return;
       if ([1, 2, 3, 4].includes(m.tanks)) this.settings.tanks = m.tanks;
-      if ([20, 30, 45, 60].includes(m.turnTime)) this.settings.turnTime = m.turnTime;
+      if ([0, 20, 30, 45, 60].includes(m.turnTime)) this.settings.turnTime = m.turnTime; // 0 = ohne Zeitlimit (Übungsmodus)
       if (m.theme >= -1 && m.theme < S.THEMES.length) this.settings.theme = m.theme | 0;
       if (m.map === 'random' || S.MAPS.some((x) => x.id === m.map)) this.settings.map = m.map;
       this.broadcastLobby();
@@ -599,7 +599,7 @@
       g.input = noInput();
       g.hold = { u: 0, d: 0, pu: 0, pd: 0 };
       const online = this.teamOnline(team);
-      g.timer = online ? this.settings.turnTime : 5;
+      g.timer = online ? (this.settings.turnTime || Infinity) : 5;
       g.phase = 'turn';
       g.bot = team.bot ? { t: 0, plan: null, done: false } : null;
       this.broadcast({ t: 'turn', team: g.turnTeam, tank: tank.id, online });
@@ -1384,7 +1384,7 @@
       const team = g.teams[g.turnTeam];
       const am = team ? WEAPONS.map((w) => team.ammo[w.id]) : [];
       this.broadcast({
-        t: 's', ph: g.phase, tm: Math.ceil(g.timer), tt: g.turnTeam, tb: g.active ? g.active.id : 0,
+        t: 's', ph: g.phase, tm: g.timer === Infinity ? -1 : Math.ceil(g.timer), tt: g.turnTeam, tb: g.active ? g.active.id : 0,
         wi: Math.round(g.wind * 10), wp: g.weapon, fu: Math.round(g.fuel), am, wy: g.waterY, sl: this.slow > 0 ? 1 : 0,
         rd: team ? team.turns : 0, sw: !g.fired && !g.moved && g.phase === 'turn' && team && !team.bot && team.tanks.filter((k) => k.alive).length > 1 ? 1 : 0,
         o: g.objs.map((o) => [o.id, o.kind === 'crate' ? 'c' : 'b', r1(o.x), r1(o.y), o.chute ? 1 : 0]),

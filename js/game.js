@@ -335,11 +335,11 @@
     $('hostWarn').classList.toggle('hidden', !host);
     const themeName = st.theme < 0 ? 'Zufall' : THEMES[st.theme].name;
     const mapName = st.map === 'random' ? 'Zufall' : (S.MAPS.find((x) => x.id === st.map) || {}).name;
-    $('settingsView').textContent = host ? '' : `${st.tanks} Panzer pro Spieler · ${st.turnTime} s Zugzeit · Gelände: ${mapName} · Optik: ${themeName}`;
+    $('settingsView').textContent = host ? '' : `${st.tanks} Panzer pro Spieler · ${st.turnTime ? st.turnTime + ' s Zugzeit' : 'ohne Zeitlimit'} · Gelände: ${mapName} · Optik: ${themeName}`;
     if (host) {
       const upd = (patch) => send(Object.assign({ t: 'settings' }, st, patch));
       seg($('segTanks'), [[1, '1'], [2, '2'], [3, '3'], [4, '4']], st.tanks, (v) => upd({ tanks: v }));
-      seg($('segTime'), [[20, '20 s'], [30, '30 s'], [45, '45 s'], [60, '60 s']], st.turnTime, (v) => upd({ turnTime: v }));
+      seg($('segTime'), [[20, '20 s'], [30, '30 s'], [45, '45 s'], [60, '60 s'], [0, 'Ohne', 'Ohne Zeitlimit – zum Üben']], st.turnTime, (v) => upd({ turnTime: v }));
       seg($('segMap'), [['random', 'Zufall']].concat(S.MAPS.map((x) => [x.id, x.name, x.info])), st.map, (v) => upd({ map: v }));
       seg($('segTheme'), [[-1, 'Zufall']].concat(THEMES.map((t, i) => [i, t.name])), st.theme, (v) => upd({ theme: v }));
       seg($('segBots'), S.BOT_LEVELS.map((b) => [b.id, '+ ' + b.name]), -1, (v) => send({ t: 'addbot', level: v }));
@@ -601,10 +601,10 @@
     }
     const tm = $('timer');
     if (m.ph === 'turn' || m.ph === 'retreat' || m.ph === 'pause') {
-      setText('timer', String(m.tm));
-      tm.classList.toggle('low', m.tm <= 5 && m.ph !== 'pause');
+      setText('timer', m.tm < 0 ? '∞' : String(m.tm));
+      tm.classList.toggle('low', m.tm >= 0 && m.tm <= 5 && m.ph !== 'pause');
       tm.classList.remove('idle');
-      if (myTurn && m.ph === 'turn' && m.tm <= 5 && hudCache.lastTick !== m.tm) { hudCache.lastTick = m.tm; SND.tick(); }
+      if (myTurn && m.ph === 'turn' && m.tm >= 0 && m.tm <= 5 && hudCache.lastTick !== m.tm) { hudCache.lastTick = m.tm; SND.tick(); }
     } else { setText('timer', '··'); tm.classList.add('idle'); tm.classList.remove('low'); }
     document.body.classList.toggle('slowmo', m.sl === 1);
     const wi = m.wi;

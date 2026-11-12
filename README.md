@@ -12,6 +12,8 @@ Rundenbasiertes Panzer-Artillerie-Spiel für 2–6 Spieler – komplett im Brows
 4. **Alle anderen:** Seite öffnen → Passwort → Name → Raumcode → **BEITRETEN** (oder die kopierte Einladung öffnen).
 5. In der Lobby: Panzer gestalten (Tarnung, Kommandant), Gastgeber wählt Gelände, Zugzeit und ggf. **KI-Gegner** → **GEFECHT STARTEN**.
 
+**Üben:** Zugzeit **Ohne** wählen (kein Zeitlimit) und einen KI-Gegner hinzufügen.
+
 Bricht beim Gastgeber etwas ab (Tab zu, Absturz), auf der Seite im Hauptmenü **FORTSETZEN** klicken: Das Gefecht geht mit demselben Raumcode weiter, die Mitspieler verbinden sich automatisch neu.
 
 ## Probleme?
