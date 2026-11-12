@@ -19,6 +19,7 @@
   const SUDDEN_DEATH_ROUNDS = 7;
   const SUDDEN_DEATH_CAVES = 5; // Höhlen: viel Deckung, Gefechte dauern sonst doppelt so lange
   const WATER_RISE = 24;      // px pro Runde (verteilt auf die Züge der noch lebenden Teams)
+  const WATER_RISE_CAVES = 40; // Höhlen: steigt schneller (getestet: 40 kürzt am meisten, ohne dass nur noch das Wasser entscheidet)
   const BARREL_R = 7;
   const CRATE_R = 8;
   const CRATE_EVERY = 3;
@@ -1700,7 +1701,7 @@
       const sdRounds = g.map === 'hoehlen' ? SUDDEN_DEATH_CAVES : SUDDEN_DEATH_ROUNDS;
       if (!g.waterRaised && g.turnCount >= g.teams.length * sdRounds) {
         if (g.turnCount === g.teams.length * sdRounds) this.sendMsg('HOCHWASSER – das Wasser steigt jede Runde!', 'warn');
-        g.waterY = Math.round(g.waterY - WATER_RISE / Math.max(1, alive.length));
+        g.waterY = Math.round(g.waterY - (g.map === 'hoehlen' ? WATER_RISE_CAVES : WATER_RISE) / Math.max(1, alive.length));
         g.waterRaised = true;
         g.settleT = 0;
         return;
