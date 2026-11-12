@@ -24,6 +24,13 @@
   const CRATE_CHANCE = 0.65;
   const CRATE_HEAL = 25;
   const RESUME_WAIT = 25;      // Sekunden Wartezeit auf Mitspieler nach "Gefecht fortsetzen"
+  const FIRE_REACH = R + 9;    // Abstand Flamme -> Panzermitte, ab dem es brennt
+  const FIRE_LAND = 8;         // Schaden, wenn Napalm auf einem Panzer landet (einmal pro Zug)
+  const FIRE_DMG = 6;          // Schaden pro Zug im Feuer (+1 je weitere Flamme, max. FIRE_MAX)
+  const FIRE_MAX = 12;
+  const FIRE_ROUNDS = 2;       // so viele Runden brennt Napalm
+  const FLAMES = 9;            // Brandtropfen pro Napalm
+  const C4_FUSE = 50;          // Ticks Piepen, bevor die Sprengladung hochgeht
   const SAVE_KEY = 'sf_save';
   const BOARD_KEY = 'sf_board';
 
@@ -40,6 +47,9 @@
     death:   [26, 12, 4.5],
     barrel:  [40, 30, 6.5],
     crate:   [30, 20, 5.0],
+    napalm:  [22, 14, 3.5],   // kleiner Knall – der Schaden kommt vom Feuer
+    c4:      [62, 62, 8.5],   // stark, aber eine ganze Runde Vorwarnung
+    nuke:    [120, 80, 11.5],
   };
   const PT = {
     shell:   { wind: 1.0, impact: true },
@@ -49,6 +59,10 @@
     drill:   { wind: 0.3, drill: true },
     bouncer: { wind: 0.3, bounce: 0.55 },
     mine:    { wind: 0.0, bounce: 0.1 },
+    napalm:  { wind: 0.8, impact: true },
+    nuke:    { wind: 0.6, impact: true },
+    flame:   { wind: 0.15, bounce: 0.12 },
+    c4:      { wind: 0.0, bounce: 0.1 },
   };
   const BOT_SKILL = {
     1: { a: 6, p: 8, wind: 0.0, think: 2.2, smart: 0.2 },
@@ -237,6 +251,7 @@
         input: noInput(), hold: { u: 0, d: 0, pu: 0, pd: 0 },
         driveV: 0, burst: null, turnCount: 0, waterY: H - 62, settleT: 0, waterRaised: false, out: [], fired: false,
         objs: [], chain: [], moved: false, stats: null, crateDone: false, sinceCrate: 0, bot: null, turnHit: false, sayQ: [], lastLine: {}, firedMode: '',
+        fires: [], burnDone: false, c4Done: false,
       };
       this.phase = 'game';
       this.genTerrain(map);
@@ -550,8 +565,9 @@
     dropCrate() {
       const g = this.g;
       const x = rand(160, W - 160);
-      const pool = ['cluster', 'drill', 'mine', 'strike', 'repair'];
-      const content = Math.random() < 0.4 ? 'heal' : pick(pool);
+      const pool = ['cluster', 'drill', 'mine', 'strike', 'repair', 'napalm', 'c4'];
+      const r = Math.random();
+      const content = r < 0.4 ? 'heal' : r < 0.47 ? 'nuke' : pick(pool);
       const sy = this.surfaceY(x);
       const y = Math.max(-30, (sy === null ? 300 : sy) - 260);
       g.objs.push({ id: g.nextId++, kind: 'crate', x, y, vx: 0, vy: 0, grounded: false, alive: true, r: CRATE_R, chute: true, content, bounces: 0 });
@@ -579,6 +595,8 @@
       g.turnCount++;
       g.waterRaised = false;
       g.crateDone = false;
+      g.burnDone = false;
+      g.c4Done = false;
       const n = g.teams.length;
       let team = null;
       for (let i = 1; i <= n; i++) {
@@ -804,8 +822,9 @@
       const src = { team: team.idx, ox: t.x, oy: t.y };
       if (w.mode === 'fire' || w.mode === 'aim' || w.mode === 'target') team.st.shots++;
       g.firedMode = w.mode;
-      if (w.mode === 'fire' || w.mode === 'aim') this.say(t, 'fire', 0, 0.45);
-      else if (['mine', 'strike', 'ram', 'repair'].includes(w.id)) this.say(t, w.id, 0, 0.9);
+      if (w.id === 'napalm' || w.id === 'nuke') this.say(t, w.id, 0, 0.9);
+      else if (w.mode === 'fire' || w.mode === 'aim') this.say(t, 'fire', 0, 0.45);
+      else if (['mine', 'strike', 'ram', 'repair', 'c4'].includes(w.id)) this.say(t, w.id, 0, 0.9);
       const shoot = (type, extra) => {
         const p = Object.assign({ id: g.nextId++, type, x: mx, y: my, vx: dx * sp, vy: dy * sp, owner: t.id, age: 0, fuse: -1, src }, extra || {});
         g.proj.push(p);
@@ -817,6 +836,13 @@
         case 'cluster': shoot('cluster'); break;
         case 'drill': shoot('drill', { dl: 70 }); break;
         case 'mg': g.burst = { n: 5, t: 0, src }; break;
+        case 'napalm': shoot('napalm'); break;
+        case 'nuke': shoot('nuke'); break;
+        case 'c4': {
+          // vor dem Panzer ablegen; geht erst zu Beginn des nächsten eigenen Zuges hoch
+          g.proj.push({ id: g.nextId++, type: 'c4', x: t.x + t.face * 16, y: t.y - 4, vx: t.face * 0.7, vy: -1.2, owner: t.id, age: 0, fuse: -1, src });
+          break;
+        }
         case 'mine': {
           g.proj.push({ id: g.nextId++, type: 'mine', x: t.x - t.face * 20, y: t.y - 4, vx: -t.face * 0.6, vy: -1.2, owner: t.id, age: 0, fuse: -1, armed: false, src });
           break;
@@ -896,6 +922,10 @@
       const r = Math.random();
       if (avail('cluster') && r < 0.18) w = 'cluster';
       else if (avail('drill') && r < 0.3) w = 'drill';
+      else if (avail('napalm') && r < 0.45) w = 'napalm';
+      // Atomgranate nur, wenn das Ziel weit genug weg ist (sonst trifft sie sich selbst)
+      if (avail('nuke') && Math.abs(target.x - t.x) > 340 && Math.random() < 0.5 * sk.smart + 0.3) w = 'nuke';
+      // Sprengladung nutzt die KI bewusst nicht (müsste eine Runde vorausplanen)
       // Abpraller bewusst nicht: die Flugbahn-Suche unten kennt kein Abprallen + Zünder, die KI träfe damit fast nie
       // beste Lösung suchen
       const face = target.x < t.x ? -1 : 1;
@@ -916,7 +946,7 @@
             if (dd < 10 || this.solid(x, y) || y > g.waterY || x < -200 || x > W + 200) break;
           }
           const fin = Math.hypot(x - target.x, y - target.y);
-          const score = fin + (fin > 60 ? 0 : 0) + (Math.hypot(x - t.x, y - t.y) < 50 ? 500 : 0);
+          const score = fin + (fin > 60 ? 0 : 0) + (Math.hypot(x - t.x, y - t.y) < (w === 'nuke' ? 200 : 50) ? 500 : 0);
           if (!best || score < best.s) best = { s: score, aim, pw };
         }
       }
@@ -930,6 +960,7 @@
         const elev = (Math.atan2(-dy, Math.abs(dx)) * 180) / Math.PI;
         if (los && elev >= PHYS.AIM_MIN && elev <= PHYS.AIM_MAX) return { w: 'mg', face, aim: clamp(elev + gauss() * sk.a * 0.5, PHYS.AIM_MIN, PHYS.AIM_MAX), power: t.power };
         if (avail('drill')) w = 'drill';
+        else if (w === 'nuke') w = 'shell'; // keine Atomgranate auf gut Glück
       }
       return { w, face, aim: clamp(best.aim + gauss() * sk.a, PHYS.AIM_MIN, PHYS.AIM_MAX), power: clamp(best.pw + gauss() * sk.p, 5, 100) };
     }
@@ -983,6 +1014,7 @@
       if (g.winch && g.active) this.updateWinch();
       for (const t of g.tanks) this.updateTank(t);
       for (const o of g.objs) this.updateObj(o);
+      if (g.fires.length) this.updateFires();
       for (const p of g.proj.slice()) if (!p.dead) this.updateProj(p);
       g.proj = g.proj.filter((p) => !p.dead);
       g.objs = g.objs.filter((o) => o.alive);
@@ -1123,6 +1155,8 @@
       const g = this.g, T = PT[p.type];
       p.age++;
       if (p.fuse > 0 && --p.fuse === 0) return this.boomAt(p);
+      // Brandtropfen: sobald er liegt (oder spätestens nach 2,5 s) wird er zur Flamme am Boden
+      if (p.type === 'flame' && (p.rest || p.age > 150)) return this.ignite(p);
       if (p.type === 'mine') {
         if (!p.armed && p.age > 60) p.armed = true;
         if (p.armed && !p.triggered && g.tanks.some((t) => t.alive && Math.hypot(t.x - p.x, t.y - p.y) < R + 12)) {
@@ -1187,12 +1221,84 @@
         this.carveRaw(p.x, p.y, rr);
         this.broadcast({ t: 'carve', x: Math.round(p.x), y: Math.round(p.y), r: rr, raw: 1 });
       }
+      if (p.type === 'nuke') {
+        this.broadcast({ t: 'fx', k: 'nuke', x: r1(p.x), y: r1(p.y) });
+        this.slowmo(80);
+      }
       this.explode(p.x, p.y, r, d, k, p.type, p.src);
+      if (p.type === 'napalm') {
+        for (let i = 0; i < FLAMES; i++) {
+          const a = -Math.PI / 2 + ((i - (FLAMES - 1) / 2) / FLAMES) * 2.4 + rand(-0.15, 0.15);
+          const s = rand(1.6, 3.4);
+          this.g.proj.push({ id: this.g.nextId++, type: 'flame', x: p.x, y: p.y - 4, vx: Math.cos(a) * s + p.vx * 0.15, vy: Math.sin(a) * s, owner: -1, age: 0, fuse: -1, src: p.src });
+        }
+        this.broadcast({ t: 'fx', k: 'ignite', x: r1(p.x), y: r1(p.y) });
+      }
       if (p.type === 'cluster') {
         for (let i = 0; i < 5; i++) {
           this.g.proj.push({ id: this.g.nextId++, type: 'bomblet', x: p.x, y: p.y - 4, vx: rand(-2.2, 2.2), vy: rand(-5, -3), owner: -1, age: 0, fuse: -1, src: p.src });
         }
       }
+    }
+
+    // ---------- Napalm-Feuer ----------
+    ignite(p) {
+      const g = this.g;
+      p.dead = true;
+      const near = g.fires.find((f) => Math.hypot(f.x - p.x, f.y - p.y) < 6);
+      const life = FIRE_ROUNDS * Math.max(1, g.teams.filter((tm) => tm.tanks.some((k) => k.alive)).length);
+      if (near) near.life = Math.max(near.life, life);
+      else g.fires.push({ id: g.nextId++, x: p.x, y: p.y, life, born: g.turnCount, src: p.src });
+      // landet auf einem Panzer: sofort Brandschaden (einmal pro Panzer und Zug)
+      for (const t of g.tanks) {
+        if (!t.alive || t.burnT === g.turnCount || Math.hypot(t.x - p.x, t.y - p.y) >= FIRE_REACH) continue;
+        t.burnT = g.turnCount;
+        this.damage(t, FIRE_LAND, p.src);
+        this.say(t, 'burn', 10, 0.7);
+      }
+    }
+    updateFires() {
+      const g = this.g;
+      for (const f of g.fires) {
+        // Boden weggesprengt? -> Flamme fällt nach (Feuer fließt hangabwärts)
+        if (!this.solid(f.x, f.y + 4)) {
+          f.y += 1.5;
+          const l = this.solid(f.x - 3, f.y + 4), r = this.solid(f.x + 3, f.y + 4);
+          if (l && !r) f.x += 0.6; else if (r && !l) f.x -= 0.6;
+        }
+        if (f.y > g.waterY || f.y > H) {
+          f.life = 0;
+          this.broadcast({ t: 'fx', k: 'steam', x: r1(f.x), y: g.waterY });
+        }
+      }
+      g.fires = g.fires.filter((f) => f.life > 0);
+    }
+    // am Ende jedes Zuges: wer im Feuer steht, nimmt Schaden; Flammen brennen langsam aus
+    burnFires() {
+      const g = this.g;
+      let any = false;
+      const old = g.fires.filter((f) => f.born !== g.turnCount);
+      for (const t of g.tanks) {
+        if (!t.alive) continue;
+        const near = old.filter((f) => Math.hypot(t.x - f.x, t.y - f.y) < FIRE_REACH);
+        if (!near.length) continue;
+        any = true;
+        this.damage(t, Math.min(FIRE_MAX, FIRE_DMG + near.length - 1), near[0].src);
+        this.broadcast({ t: 'fx', k: 'burn', id: t.id, x: r1(t.x), y: r1(t.y) });
+        this.say(t, 'burn', 0, 0.5);
+      }
+      for (const f of old) f.life--;
+      g.fires = g.fires.filter((f) => f.life > 0);
+      return any;
+    }
+    // welches Team als Nächstes dran ist (gleiche Regel wie nextTurn)
+    nextTeamIdx() {
+      const g = this.g, n = g.teams.length;
+      for (let i = 1; i <= n; i++) {
+        const ti = (g.turnTeam + i) % n;
+        if (g.teams[ti].tanks.some((t) => t.alive)) return ti;
+      }
+      return -1;
     }
 
     mgShot(t, src) {
@@ -1312,7 +1418,7 @@
     stable() {
       const g = this.g;
       if (g.queue.length || g.burst || g.chain.length || g.winch) return false;
-      if (g.proj.some((p) => !(p.type === 'mine' && p.rest && !p.triggered))) return false;
+      if (g.proj.some((p) => !((p.type === 'mine' && p.rest && !p.triggered) || (p.type === 'c4' && p.rest && !(p.fuse > 0))))) return false;
       if (g.objs.some((o) => o.alive && !o.grounded)) return false;
       return g.tanks.every((t) => !t.alive || t.grounded);
     }
@@ -1357,6 +1463,23 @@
       }
       const alive = g.teams.filter((t) => t.tanks.some((k) => k.alive));
       if (alive.length <= 1) return this.gameOver();
+      // Napalm brennt
+      if (!g.burnDone) {
+        g.burnDone = true;
+        if (g.fires.length && this.burnFires()) { g.settleT = 0; return; }
+      }
+      // Sprengladungen gehen zu Beginn des nächsten Zuges ihres Teams hoch (oder sofort, wenn das Team schon raus ist)
+      if (!g.c4Done) {
+        g.c4Done = true;
+        const nt = this.nextTeamIdx();
+        const due = g.proj.filter((p) => p.type === 'c4' && !(p.fuse > 0) && (p.src.team === nt || !g.teams[p.src.team].tanks.some((k) => k.alive)));
+        if (due.length) {
+          for (const p of due) { p.fuse = C4_FUSE; this.broadcast({ t: 'fx', k: 'trigger', x: r1(p.x), y: r1(p.y) }); }
+          this.sendMsg(due.length > 1 ? 'Sprengladungen gezündet!' : 'Sprengladung gezündet!', 'warn');
+          g.settleT = 0;
+          return;
+        }
+      }
       if (!g.crateDone) {
         g.crateDone = true;
         g.sinceCrate++;
@@ -1434,7 +1557,8 @@
           teams: g.teams.map((t) => ({ pid: t.pid, name: t.name, color: t.color, bot: t.bot, look: t.look, next: t.next, ammo: t.ammo, lastWeapon: t.lastWeapon, idx: t.idx, turns: t.turns, st: t.st, tankIds: t.tanks.map((k) => k.id) })),
           tanks: g.tanks.map((t) => { const o = {}; for (const k of tankKeys) o[k] = t[k]; return o; }),
           objs: g.objs.filter((o) => o.alive).map((o) => ({ id: o.id, kind: o.kind, x: o.x, y: o.y, r: o.r, content: o.content })),
-          mines: g.proj.filter((p) => p.type === 'mine').map((p) => ({ id: p.id, x: p.x, y: p.y, owner: p.owner, armed: p.armed, src: p.src })),
+          mines: g.proj.filter((p) => p.type === 'mine' || p.type === 'c4').map((p) => ({ id: p.id, type: p.type, x: p.x, y: p.y, owner: p.owner, armed: p.armed, src: p.src })),
+          fires: g.fires.map((f) => ({ id: f.id, x: f.x, y: f.y, life: f.life, src: f.src })),
         },
       };
       store.set(SAVE_KEY, JSON.stringify(data));
@@ -1462,13 +1586,19 @@
         input: noInput(), hold: { u: 0, d: 0, pu: 0, pd: 0 },
         driveV: 0, burst: null, turnCount: s.turnCount, waterY: s.waterY, settleT: 0, waterRaised: false, out: s.out, fired: false,
         objs: [], chain: [], moved: false, stats: null, crateDone: false, sinceCrate: s.sinceCrate, bot: null, turnHit: false, sayQ: [], lastLine: {}, firedMode: '',
+        fires: (s.fires || []).map((f) => Object.assign({ born: -1 }, f)), burnDone: false, c4Done: false,
       };
       const byId = {};
       for (const t of s.tanks) { const k = Object.assign({ vx: 0, vy: 0, grounded: false, bounces: 0 }, t); g.tanks.push(k); byId[k.id] = k; }
-      for (const t of s.teams) g.teams.push(Object.assign({}, t, { tanks: t.tankIds.map((id) => byId[id]) }));
+      for (const t of s.teams) {
+        // Spielstand aus älterer Version: fehlende (neue) Waffen mit Startmunition auffüllen
+        const ammo = Object.assign({}, t.ammo);
+        for (const w of WEAPONS) if (typeof ammo[w.id] !== 'number') ammo[w.id] = w.ammo;
+        g.teams.push(Object.assign({}, t, { ammo, tanks: t.tankIds.map((id) => byId[id]) }));
+      }
       g.active = byId[s.activeId];
       for (const o of s.objs) g.objs.push(Object.assign({ vx: 0, vy: 0, grounded: false, alive: true, bounces: 0 }, o));
-      for (const p of s.mines) g.proj.push({ id: p.id, type: 'mine', x: p.x, y: p.y, vx: 0, vy: 0, owner: p.owner, age: 100, fuse: -1, armed: p.armed, src: p.src });
+      for (const p of s.mines) g.proj.push({ id: p.id, type: p.type || 'mine', x: p.x, y: p.y, vx: 0, vy: 0, owner: p.owner, age: 100, fuse: -1, armed: p.armed, src: p.src });
       this.phase = 'game';
     }
 
@@ -1484,6 +1614,7 @@
         o: g.objs.map((o) => [o.id, o.kind === 'crate' ? 'c' : 'b', r1(o.x), r1(o.y), o.chute ? 1 : 0]),
         b: g.tanks.map((t) => [t.id, r1(t.x), r1(t.y), t.hp, t.face, r1(t.aim), t.alive ? 1 : 0, Math.round(t.tilt * 100), t.drowned ? 1 : 0, Math.round(t.power), t.grounded ? 1 : 0]),
         p: g.proj.map((p) => [p.id, p.type, r1(p.x), r1(p.y), r1(p.vx), r1(p.vy), p.fuse > 0 ? Math.ceil(p.fuse / 60) : 0, p.armed ? 1 : 0]),
+        f: g.fires.map((f) => [f.id, r1(f.x), r1(f.y), f.life]),
       });
     }
   }

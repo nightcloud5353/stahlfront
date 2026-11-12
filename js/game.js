@@ -28,6 +28,16 @@
     winch: '<circle cx="5" cy="19" r="2.5"/><path d="M7 17 L15 9"/><path d="M15 9 Q21 3 19 9 Q17 13 14 11"/>',
     repair: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 7.5 V16.5 M7.5 12 H16.5"/>',
     skip: '<path d="M4 5 H11 L4 12 H11 M13 12 H20 L13 19 H20"/>',
+    napalm: '<path d="M12 2 Q18 9 16 14 Q20 12 19 9 Q23 15 19 19 Q16 22 12 22 Q7 22 5 18 Q3 13 7 9 Q7 13 9 14 Q7 8 12 2 Z"/><path d="M10 18 Q10 15 12 13 Q14 16 14 18"/>',
+    c4: '<rect x="3" y="9" width="18" height="11" rx="1"/><path d="M8 9 V20 M16 9 V20 M12 9 V5 Q12 3 15 3 H18"/><circle cx="12" cy="14.5" r="1.5"/>',
+    nuke: '<circle cx="12" cy="12" r="2"/><circle cx="12" cy="12" r="10"/><path d="M12 10 L9 4.8 Q12 3.5 15 4.8 Z M13.7 13 L19.7 13 Q19.3 16.4 16.7 18.1 Z M10.3 13 L7.3 18.1 Q4.7 16.4 4.3 13 Z"/>',
+  };
+  // Tastenkürzel: 1–0 für die ersten zehn Waffen (wie bisher), Umschalt+1… für die neuen
+  const KEY_ORDER = WEAPONS.filter((w) => w.id !== 'winch');
+  const keyLabel = (w) => {
+    if (w.id === 'winch') return 'R';
+    const i = KEY_ORDER.indexOf(w);
+    return i < 10 ? String((i + 1) % 10) : '⇧' + ((i - 9) % 10);
   };
 
   // ---------- Zustand ----------
@@ -562,7 +572,8 @@
     const now = performance.now();
     if (snapCur) snapInt = clamp(now - snapAt, 16, 220);
     snapPrev = snapCur;
-    snapCur = { m, tanks, proj, objs };
+    const fires = (m.f || []).map((a) => ({ id: a[0], x: a[1], y: a[2], life: a[3] }));
+    snapCur = { m, tanks, proj, objs, fires };
     snapAt = now;
     G.waterY = m.wy;
     updateHud(m, tanks);
@@ -673,7 +684,7 @@
       const ammo = m.am[i];
       const locked = w.from > m.rd;
       b.disabled = ammo === 0 || locked;
-      b.innerHTML = `<svg viewBox="0 0 24 24">${ICONS[w.id]}</svg>${esc(w.name)}<i>${locked ? 'ab Zug ' + w.from : ammo < 0 ? '∞' : ammo}</i><kbd>${w.id === 'winch' ? 'R' : (WEAPONS.filter((x) => x.id !== 'winch').indexOf(w) + 1) % 10}</kbd>`;
+      b.innerHTML = `<svg viewBox="0 0 24 24">${ICONS[w.id]}</svg>${esc(w.name)}<i>${locked ? 'ab Zug ' + w.from : ammo < 0 ? '∞' : ammo}</i><kbd>${keyLabel(w)}</kbd>`;
       b.addEventListener('click', () => { pickWeapon(w.id); $('weaponMenu').classList.add('hidden'); });
       b.addEventListener('pointerenter', () => { $('winfo').innerHTML = `<b>${esc(w.name)}:</b> ${esc(w.info)}`; });
       grid.appendChild(b);
@@ -753,7 +764,7 @@
     if (e.code === 'KeyP') { if (snapCur && snapCur.m.sw) send({ t: 'switch' }); return; }
     if (e.code === 'KeyR') { pickWeapon('winch'); return; }
     const dm = /^(?:Digit|Numpad)(\d)$/.exec(e.code);
-    if (dm) { const order = WEAPONS.filter((w) => w.id !== 'winch'); const i = (Number(dm[1]) + 9) % 10; if (order[i]) pickWeapon(order[i].id); }
+    if (dm) { const i = (Number(dm[1]) + 9) % 10 + (e.shiftKey ? 10 : 0); if (KEY_ORDER[i]) pickWeapon(KEY_ORDER[i].id); }
   });
   window.addEventListener('keyup', (e) => { const k = KEYMAP[e.code]; if (k) setKey(k, false); });
   window.addEventListener('blur', () => { if (Object.values(keys).some(Boolean)) releaseKeys(); });
@@ -974,6 +985,16 @@
         if (p) { texts.push({ x: p[0], y: p[1] - 34, text: '+' + m.a, t: performance.now(), heal: true }); for (let i = 0; i < 12; i++) particles.push({ x: p[0] + (Math.random() - 0.5) * 20, y: p[1], vx: 0, vy: -0.6 - Math.random(), life: 0, max: 50, size: 3, col: '#9BE07A', type: 'plus' }); }
         break;
       }
+      case 'ignite': SND.fire(panOf(m.x)); break;
+      case 'burn': {
+        SND.fire(panOf(m.x));
+        for (let i = 0; i < 14; i++) particles.push({ x: m.x + (Math.random() - 0.5) * 18, y: m.y + 4, vx: (Math.random() - 0.5) * 0.6, vy: -0.8 - Math.random() * 1.2, life: 0, max: 26, size: 2 + Math.random() * 2, col: Math.random() < 0.5 ? '#FFB547' : '#FF6A1A', type: 'spark' });
+        break;
+      }
+      case 'steam':
+        for (let i = 0; i < 6; i++) particles.push({ x: m.x + (Math.random() - 0.5) * 8, y: m.y - 2, vx: (Math.random() - 0.5) * 0.4, vy: -0.6 - Math.random() * 0.5, life: 0, max: 50, size: 3, col: '#D8DCDC', type: 'smoke' });
+        break;
+      case 'nuke': nukeFx(m.x, m.y); break;
       case 'pickup': SND.pickup(); texts.push({ x: m.x, y: m.y - 24, text: m.text, t: performance.now(), heal: true }); break;
       default:
     }
@@ -1031,6 +1052,23 @@
     }
     for (let i = 0; i < 4 + r / 8; i++) particles.push({ x: x + (Math.random() - 0.5) * r, y: y + (Math.random() - 0.5) * r * 0.6, vx: (Math.random() - 0.5) * 0.6, vy: -0.4 - Math.random() * 0.5, life: 0, max: 80 + Math.random() * 60, size: r * 0.35 + Math.random() * 8, col: '#4A4A44', type: 'smoke' });
     cam.shake = Math.max(cam.shake, Math.min(16, r / 3));
+  }
+  // Atomgranate: Blitz, Druckwelle, Pilzwolke
+  function nukeFx(x, y) {
+    particles.push({ x, y, vx: 0, vy: 0, life: 0, max: 26, size: 260, col: '#FFFBE0', type: 'flash' });
+    for (let i = 0; i < 3; i++) particles.push({ x, y, vx: 0, vy: 0, life: 0, max: 30 + i * 14, size: 170 + i * 50, col: '#FFFFFF', type: 'ring' });
+    for (let i = 0; i < 40; i++) {
+      const k = i / 40;
+      particles.push({ x: x + (Math.random() - 0.5) * 16, y: y - k * 150, vx: (Math.random() - 0.5) * 0.3, vy: -0.25 - Math.random() * 0.2, life: 0, max: 200 + Math.random() * 80, size: 10 + Math.random() * 6, col: k > 0.7 ? '#7A6A5A' : '#5E544A', type: 'smoke' });
+    }
+    for (let i = 0; i < 46; i++) {
+      const a = Math.random() * Math.PI * 2;
+      particles.push({ x: x + Math.cos(a) * 60, y: y - 160 + Math.sin(a) * 30, vx: Math.cos(a) * 0.5, vy: -0.25 + Math.sin(a) * 0.15, life: 0, max: 220 + Math.random() * 80, size: 22 + Math.random() * 14, col: Math.random() < 0.3 ? '#C2643A' : '#6E6258', type: 'smoke' });
+    }
+    cam.shake = 34;
+    cam.punch = 0.35;
+    callout('ATOMSCHLAG!', '#FFE27A', '');
+    setTimeout(() => SND.boom(90, panOf(x), 0.7), 260);
   }
   function dirt(x, y, n) {
     const th = G.theme;
@@ -1091,6 +1129,8 @@
     let best = null;
     for (const p of snapCur.proj.values()) {
       if (p.type === 'mine' && (p.armed || Math.abs(p.vx) + Math.abs(p.vy) < 0.2)) continue;
+      if (p.type === 'c4' && !p.fuse && Math.abs(p.vx) + Math.abs(p.vy) < 0.2) continue;
+      if (p.type === 'flame') continue;
       if (!best || p.id > best.id) best = p;
     }
     if (best) { const p = interp('proj', best.id); return [p.x, p.y]; }
@@ -1134,6 +1174,7 @@
     const lookOf = (t) => { const info = G.tankInfo[t.id]; const team = info ? G.teams[info.team] : null; return [team ? team.look : null, team ? S.TEAM_COLORS[team.color] : '#888']; };
     for (const t of list) if (!t.alive) { const [lk, col] = lookOf(t); drawTank(ctx, t, lk, col, now, false); }
     for (const t of list) if (t.alive) { const [lk, col] = lookOf(t); drawTank(ctx, t, lk, col, now, t.id === m.tb && (m.ph === 'turn' || m.ph === 'retreat')); }
+    if (snapCur.fires && snapCur.fires.length) drawFires(snapCur.fires, now);
     if (myTurn && m.ph === 'turn' && !m.wn) drawAimHelp(m);
     if (m.wn) {
       // Seil der Winde vom Panzer zum Haken
@@ -1463,6 +1504,35 @@
         ctx.fillStyle = '#3F4A2A'; ctx.beginPath(); ctx.arc(0, 0, 3.4, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = blink ? '#FF4A3A' : '#5A1A14'; ctx.beginPath(); ctx.arc(0, -1, 1, 0, Math.PI * 2); ctx.fill();
         break;
+      case 'napalm': case 'nuke': {
+        const nk = p.type === 'nuke';
+        if (Math.random() < 0.8) particles.push({ x: p.x, y: p.y, vx: 0, vy: -0.2, life: 0, max: 40, size: 2.5 + Math.random() * 2, col: nk ? '#C9C9B8' : '#6A5040', type: 'smoke' });
+        if (!nk && Math.random() < 0.5) particles.push({ x: p.x, y: p.y, vx: (Math.random() - 0.5) * 0.5, vy: -0.3, life: 0, max: 14, size: 1.6, col: '#FF8A2A', type: 'spark' });
+        ctx.rotate(ang);
+        const s = nk ? 1.5 : 1.15;
+        ctx.scale(s, s);
+        ctx.fillStyle = nk ? '#C9B23A' : '#7A2E1C';
+        ctx.beginPath(); ctx.moveTo(-5, -2.4); ctx.lineTo(2.5, -2.4); ctx.quadraticCurveTo(7, -1.6, 7, 0); ctx.quadraticCurveTo(7, 1.6, 2.5, 2.4); ctx.lineTo(-5, 2.4); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = nk ? '#1E1E1A' : '#E0A526';
+        if (nk) { ctx.beginPath(); ctx.arc(0, 0, 1.6, 0, Math.PI * 2); ctx.fill(); ctx.fillRect(-5, -2.4, 1.2, 4.8); }
+        else { ctx.fillRect(-1, -2.4, 1.2, 4.8); ctx.fillRect(-5, -2.4, 1.5, 4.8); }
+        break;
+      }
+      case 'flame': {
+        const f = 0.8 + Math.sin(now / 50 + p.id) * 0.2;
+        ctx.fillStyle = '#FF7A1E'; ctx.beginPath(); ctx.arc(0, 0, 3.2 * f, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#FFD45A'; ctx.beginPath(); ctx.arc(0, 0, 1.6 * f, 0, Math.PI * 2); ctx.fill();
+        if (Math.random() < 0.4) particles.push({ x: p.x, y: p.y, vx: 0, vy: -0.4, life: 0, max: 30, size: 2, col: '#3B3530', type: 'smoke' });
+        break;
+      }
+      case 'c4': {
+        ctx.fillStyle = '#B9A77A'; ctx.fillRect(-6, -4, 12, 7);
+        ctx.fillStyle = '#7C6E4C'; ctx.fillRect(-2.5, -4, 1, 7); ctx.fillRect(1.5, -4, 1, 7);
+        ctx.fillStyle = '#2A2A24'; ctx.fillRect(-1.5, -6, 3, 2);
+        const fast = p.fuse > 0 ? Math.floor(now / 80) % 2 === 0 : blink;
+        ctx.fillStyle = fast ? '#FF3A2A' : '#5A1A14'; ctx.beginPath(); ctx.arc(0, -0.5, 1.2, 0, Math.PI * 2); ctx.fill();
+        break;
+      }
       case 'mine':
         ctx.fillStyle = '#2E3226'; ctx.beginPath(); ctx.ellipse(0, 1, 5, 3.2, 0, Math.PI, 0); ctx.fill(); ctx.fillRect(-5.5, 1, 11, 1.6);
         ctx.fillStyle = p.armed ? (blink ? '#FF3A2A' : '#5A1A14') : '#8FB04A'; ctx.beginPath(); ctx.arc(0, -1.5, 1, 0, Math.PI * 2); ctx.fill();
@@ -1470,9 +1540,37 @@
       default:
     }
     ctx.restore();
+    if (p.type === 'c4') {
+      ctx.font = '700 9px "Barlow Condensed", sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = p.fuse > 0 ? '#FF6A5A' : '#F0EDD6';
+      ctx.fillText(p.fuse > 0 ? '!!!' : 'C4', p.x, p.y - 9);
+    }
     if (p.fuse > 0 && p.type === 'bouncer') {
       ctx.font = '700 9px "Barlow Condensed", sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#F0EDD6';
       ctx.fillText(String(p.fuse), p.x, p.y - 7);
+    }
+  }
+
+  // Napalm am Boden: flackernde Flammen, die mit der Restdauer kleiner werden
+  function drawFires(list, now) {
+    for (const f of list) {
+      const s = Math.min(1, 0.55 + f.life * 0.12);
+      ctx.save();
+      ctx.translate(f.x, f.y + 3);
+      ctx.globalAlpha = 0.35; ctx.fillStyle = '#FF8A2A';
+      ctx.beginPath(); ctx.ellipse(0, 0, 11 * s, 4, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+      for (let k = 0; k < 3; k++) {
+        const ph = now / 90 + f.id * 1.7 + k * 2.1;
+        const h = (9 + Math.sin(ph) * 3 + Math.sin(ph * 2.3) * 1.5) * s;
+        const x = (k - 1) * 4.5 * s + Math.sin(ph * 0.7) * 1.2;
+        ctx.fillStyle = k === 1 ? '#FF6A1A' : '#E8451A';
+        ctx.beginPath(); ctx.moveTo(x - 3.2 * s, 0); ctx.quadraticCurveTo(x - 2.5 * s, -h * 0.6, x + Math.sin(ph) * 1.5, -h); ctx.quadraticCurveTo(x + 2.5 * s, -h * 0.6, x + 3.2 * s, 0); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#FFD45A';
+        ctx.beginPath(); ctx.moveTo(x - 1.5 * s, 0); ctx.quadraticCurveTo(x, -h * 0.55, x + 1.5 * s, 0); ctx.closePath(); ctx.fill();
+      }
+      ctx.restore();
+      if (Math.random() < 0.06) particles.push({ x: f.x + (Math.random() - 0.5) * 10, y: f.y - 8, vx: 0.1, vy: -0.5, life: 0, max: 70, size: 4, col: '#3B3530', type: 'smoke' });
+      if (Math.random() < 0.05) particles.push({ x: f.x, y: f.y - 4, vx: (Math.random() - 0.5) * 0.8, vy: -1 - Math.random(), life: 0, max: 22, size: 1.2, col: '#FFB547', type: 'spark' });
     }
   }
 

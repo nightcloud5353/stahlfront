@@ -146,6 +146,18 @@
       { const x = osc('sawtooth', 85, t, 0.8), g = AC.createGain(); env(g, t, 0.02, 0.12, 0.7); x.connect(filt('lowpass', 500)).connect(g).connect(o); }
       { const n = noiseSrc(t, 0.8), f = filt('bandpass', 700, 2), g = AC.createGain(); env(g, t, 0.02, 0.3, 0.7); n.connect(f).connect(g).connect(o); }
     },
+    // Feuer: Fauchen + Knistern (Napalm)
+    fire(pan) {
+      if (!ok()) return;
+      const t = AC.currentTime, o = bus(pan, 0.25);
+      { const n = noiseSrc(t, 1.2), f = filt('lowpass', 900), g = AC.createGain(); f.frequency.setValueAtTime(1600, t); f.frequency.exponentialRampToValueAtTime(400, t + 1.1); env(g, t, 0.04, 0.45, 1.0); n.connect(f).connect(g).connect(o); }
+      for (let i = 0; i < 9; i++) {
+        const tt = t + 0.05 + Math.random() * 0.9;
+        const n = noiseSrc(tt, 0.03), f = filt('bandpass', 2500 + Math.random() * 3000, 5), g = AC.createGain();
+        env(g, tt, 0.001, 0.2 * Math.random(), 0.02);
+        n.connect(f).connect(g).connect(o);
+      }
+    },
     beep() { if (!ok()) return; const t = AC.currentTime, o = bus(0, 0); for (const d of [0, 0.14]) { const x = osc('square', 1500, t + d, 0.06), g = AC.createGain(); env(g, t + d, 0.002, 0.08, 0.05); x.connect(filt('bandpass', 1500, 3)).connect(g).connect(o); } },
     // Funkspruch beim Zugwechsel
     radio(mine) {

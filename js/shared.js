@@ -22,6 +22,10 @@
     { id: 'winch',   name: 'Seilwinde',        short: 'SEILWINDE',  ammo: 3,  from: 1, mode: 'aim',    info: 'Haken in Rohrrichtung abschießen – die Winde zieht dich hin. Beendet den Zug NICHT, danach kannst du noch schießen.' },
     { id: 'repair',  name: 'Reparatur',        short: 'REPARATUR',  ammo: 1,  from: 1, mode: 'now',    info: '+30 Panzerung, beendet aber deinen Zug.' },
     { id: 'skip',    name: 'Aussetzen',        short: 'AUSSETZEN',  ammo: -1, from: 1, mode: 'now',    info: 'Zug sofort beenden.' },
+    // neue Waffen (Tasten Umschalt+1/2/3, damit 1–0 wie gewohnt bleiben)
+    { id: 'napalm',  name: 'Napalm',           short: 'NAPALM',     ammo: 1,  from: 3, mode: 'fire',   info: 'Setzt den Boden in Brand. Das Feuer fließt hangabwärts, brennt 2 Runden und verletzt jeden, der darin steht. Wasser löscht.' },
+    { id: 'c4',      name: 'Sprengladung',     short: 'C4',         ammo: 1,  from: 2, mode: 'now',    info: 'Wird vor dir abgelegt und explodiert zu Beginn deines NÄCHSTEN Zuges – sehr stark. Gegner können flüchten oder sie wegsprengen.' },
+    { id: 'nuke',    name: 'Atomgranate',      short: 'ATOM',       ammo: 0,  from: 5, mode: 'fire',   info: 'Riesiger Krater, alles in der Nähe fliegt weg. Gibt es nur selten aus Nachschub-Kisten – Abstand halten!' },
   ];
 
   // Rufnamen der Panzer (Persönlichkeit!)
@@ -89,6 +93,10 @@
     mine: ['Vorsicht, Stufe!', 'Kleines Geschenk…', 'Nicht drauftreten!'],
     strike: ['Luftpost!', 'Achtung, von oben!', 'Ich hab Freunde da oben!'],
     winch: ['Festhalten!', 'Abschleppdienst!', 'Hoch mit dir!'],
+    c4: ['Tick, tack…', 'Nicht anfassen!', 'Ein Paket für euch!'],
+    napalm: ['Grillabend!', 'Heiß, heiß, heiß!', 'Wer hat Marshmallows?'],
+    nuke: ['Ohren zuhalten!', 'Das wird ein großer Knall!', 'Lauft, solange ihr könnt!'],
+    burn: ['Es brennt!', 'Heiß hier!', 'Feuer unterm Hintern!'],
     repair: ['Klebeband hält alles!', 'Wie neu!', 'Ein bisschen Spucke…'],
     hurry: ['Schnell, schnell!', 'Die Uhr tickt!', 'Äh… äh…'],
     win: ['Sieg! Kuchen für alle!', 'Ich bin der Größte!', 'Gut gekämpft, Leute!', 'Unbesiegbar! Yallah!'],

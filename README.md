@@ -31,7 +31,7 @@ Die Verbindung läuft über einen öffentlichen Internet-Server (MQTT) – das k
 ## Steuerung
 
 - **Maus:** am eigenen Panzer ziehen = zielen (Richtung = Winkel, Länge = Kraft) · Klick = Ziel (Artillerie) · Ziehen auf der Karte = verschieben · Mausrad = Zoom
-- **Tastatur:** A/D fahren · W/S Winkel · E/Q Kraft · Leertaste Feuer · Tab Munition · 1–0 Munition direkt · P Panzer wechseln · O Übersicht · M Ton · Esc Menü
+- **Tastatur:** A/D fahren · W/S Winkel · E/Q Kraft · Leertaste Feuer · Tab Munition · 1–0 Munition direkt · Umschalt+1–3 Napalm/Sprengladung/Atomgranate · P Panzer wechseln · O Übersicht · M Ton · Esc Menü
 
 ## Technik
 
