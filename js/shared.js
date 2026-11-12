@@ -80,16 +80,16 @@
     hurt: ['Aua!', 'Mein Lack!', 'Das gibt ’ne Delle!', 'Hey, nicht so fest!', 'Autsch!', 'Das merk ich mir!'],
     hurtbig: ['Mein schöner Panzer!', 'Ich seh Sternchen!', 'Wer hat das Licht ausgemacht?', 'Das war gemein!', 'Mama!'],
     self: ['Ups.', 'Das war Absicht!', 'Nicht nachmachen!', 'Peinlich…', 'Hat das wer gesehen?', 'Falsche Richtung…'],
-    miss: ['Der Wind war schuld!', 'Warnschuss!', 'Gleich nochmal…', 'Ich üb noch.', 'Absichtlich daneben!', 'Hmpf.'],
-    drown: ['Ich kann nicht schwimmen!', 'Blubb!', 'Wasser marsch…', 'Rettungsring!', 'Glugg…'],
+    miss: ['Der Wind war schuld!', 'Warnschuss!', 'Gleich nochmal…', 'Ich üb noch.', 'Absichtlich daneben!', 'Von wo bis wo?'],
+    drown: ['Ich kann nicht schwimmen!', 'Blubb!', 'Wasser marsch…', 'Rettungsring!', 'Deux cent mètres planche!'],
     death: ['Ich komme wieder!', 'Sagt meiner Mama…', 'Das war’s dann…', 'Abgang mit Stil!', 'Nicht fair!'],
-    pickup: ['Weihnachten!', 'Nachschub, juhu!', 'Meins!', 'Danke, Luftpost!'],
+    pickup: ['Weihnachten!', 'Nachschub, juhu!', 'Mis Schätzli!', 'Danke, Luftpost!'],
     ram: ['Aus dem Weg!', 'Platz da!', 'Rammbock-Zeit!'],
     mine: ['Vorsicht, Stufe!', 'Kleines Geschenk…', 'Nicht drauftreten!'],
     strike: ['Luftpost!', 'Achtung, von oben!', 'Ich hab Freunde da oben!'],
     repair: ['Klebeband hält alles!', 'Wie neu!', 'Ein bisschen Spucke…'],
     hurry: ['Schnell, schnell!', 'Die Uhr tickt!', 'Äh… äh…'],
-    win: ['Sieg! Kuchen für alle!', 'Ich bin der Größte!', 'Gut gekämpft, Leute!', 'Unbesiegbar!'],
+    win: ['Sieg! Kuchen für alle!', 'Ich bin der Größte!', 'Gut gekämpft, Leute!', 'Unbesiegbar! Yallah!'],
   };
 
   const BOT_LEVELS = [
