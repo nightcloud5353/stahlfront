@@ -92,6 +92,7 @@
       this.acc = 0;
       this.slow = 0;
       this.lastStep = performance.now();
+      this.lines = S.LINES;
       this.interval = setInterval(() => this.loop(), 1000 / 60);
     }
     destroy() { clearInterval(this.interval); }
@@ -606,7 +607,7 @@
       else {
         this.say(tank, tank.hp < 30 ? 'lowhp' : 'turn', 40, 0.75);
         const foes = g.tanks.filter((k) => k.alive && k.team !== tank.team);
-        if (foes.length && Math.random() < 0.3) this.say(pick(foes), 'taunt', 130);
+        if (foes.length && Math.random() < 0.3) this.say(pick(foes), 'taunt', 130, undefined, g.turnTeam);
       }
       this.sendState();
     }
@@ -623,16 +624,21 @@
     }
 
     // Sprüche: der Gastgeber wählt aus, damit alle denselben Spruch sehen/hören
-    say(t, cat, delay, chance) {
+    say(t, cat, delay, chance, foe) {
       const g = this.g;
       if (!g || !t || (chance !== undefined && Math.random() > chance)) return;
       const urgent = cat === 'death' || cat === 'drown' || cat === 'win';
       if (!urgent && t.lastSay && this.tickN - t.lastSay < 70) return;
-      const list = S.LINES[cat];
-      if (!list) return;
+      const list = this.lines[cat];
+      if (!list || !list.length) return;
       let text = pick(list);
       if (list.length > 1 && text === g.lastLine[cat]) text = pick(list.filter((x) => x !== text));
       g.lastLine[cat] = text;
+      // Platzhalter: {name} = eigener Name, {gegner} = passender Gegner
+      const own = g.teams[t.team];
+      let foeName = foe >= 0 && g.teams[foe] ? g.teams[foe].name : null;
+      if (!foeName) { const others = g.teams.filter((x) => x.idx !== t.team && x.tanks.some((k) => k.alive)); foeName = others.length ? pick(others).name : 'ihr'; }
+      text = text.replace(/\{name\}/gi, own ? own.name : '').replace(/\{gegner\}/gi, foeName);
       t.lastSay = this.tickN + (delay || 0);
       if (delay) g.sayQ.push({ at: this.tickN + delay, id: t.id, text });
       else this.broadcast({ t: 'say', id: t.id, text });
@@ -1014,7 +1020,7 @@
           const by = t.lastHit >= 0 && t.lastHit !== t.team ? t.lastHit : (g.turnTeam !== t.team ? g.turnTeam : -1);
           if (by >= 0) { g.teams[by].st.kills++; g.teams[by].st.drowns++; if (g.stats && g.stats.team === by) g.stats.kills++; }
           this.broadcast({ t: 'dead', id: t.id, how: 'drown', by });
-          this.say(t, 'drown');
+          this.say(t, 'drown', 0, 1, by);
           this.slowmo(55);
           if (t === g.active && (g.phase === 'turn' || g.phase === 'retreat')) this.startSettle();
         }
@@ -1161,7 +1167,7 @@
       }
       if (src) {
         const shooter = g.active && g.active.team === src.team ? g.active : null;
-        if (victim) { this.say(victim, total >= 35 ? 'hurtbig' : 'hurt', 12, 0.8); this.say(shooter, 'hit', 40, 0.6); }
+        if (victim) { this.say(victim, total >= 35 ? 'hurtbig' : 'hurt', 12, 0.8, src.team); this.say(shooter, 'hit', 40, 0.6, victim.team); }
         else if (self >= 15) this.say(shooter, 'self', 25, 0.9);
       }
       for (const t of g.tanks) if (!t.alive && !t.drowned) { const d = Math.hypot(t.x - x, t.y - y); if (d < r + R) t.grounded = false; }
@@ -1227,7 +1233,7 @@
           if (by >= 0) g.teams[by].st.kills++;
           if (g.stats && by === g.stats.team) g.stats.kills++;
           this.broadcast({ t: 'dead', id: t.id, how: 'boom', by });
-          this.say(t, 'death');
+          this.say(t, 'death', 0, 1, by);
           const [r, d, k] = BOOM.death;
           this.explode(t.x, t.y, r, d, k, 'death', null);
         }
