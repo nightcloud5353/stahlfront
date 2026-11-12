@@ -251,3 +251,4 @@ body.ingame #rotate { display: none; }
 .rank { display: table; }
 .cbtn.weapon kbd { left: 4px; right: auto; top: 2px; bottom: auto; }
 @media (pointer: fine) { .cbtn.fire { width: calc(var(--btn) * 2.1); } .cbtn.weapon { width: calc(var(--btn) * 1.8); } }
+.version { text-align: right; font-size: 12px; opacity: .7; }
