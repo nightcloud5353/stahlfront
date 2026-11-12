@@ -235,7 +235,7 @@
         turnTeam: -1, active: null, phase: 'turn', timer: 0, wind: 0, weapon: 'shell', fuel: 100,
         input: noInput(), hold: { u: 0, d: 0, pu: 0, pd: 0 },
         driveV: 0, burst: null, turnCount: 0, waterY: H - 62, settleT: 0, waterRaised: false, out: [], fired: false,
-        objs: [], chain: [], moved: false, stats: null, crateDone: false, sinceCrate: 0, bot: null, turnHit: false,
+        objs: [], chain: [], moved: false, stats: null, crateDone: false, sinceCrate: 0, bot: null, turnHit: false, sayQ: [], lastLine: {}, firedMode: '',
       };
       this.phase = 'game';
       this.genTerrain(map);
@@ -555,6 +555,7 @@
       if (o.content === 'heal') { const b = t.hp; t.hp = Math.min(MAX_HP, t.hp + CRATE_HEAL); text = `+${t.hp - b} Panzerung`; }
       else { const w = WMAP[o.content]; team.ammo[w.id] = team.ammo[w.id] < 0 ? -1 : team.ammo[w.id] + 1; text = `+1 ${w.name}`; }
       this.broadcast({ t: 'fx', k: 'pickup', id: t.id, x: r1(o.x), y: r1(o.y), text });
+      this.say(t, 'pickup', 10);
       this.sendMsg(`${team.name} sammelt Nachschub: ${text}`);
     }
 
@@ -602,6 +603,11 @@
       g.bot = team.bot ? { t: 0, plan: null, done: false } : null;
       this.broadcast({ t: 'turn', team: g.turnTeam, tank: tank.id, online });
       if (!online) this.sendMsg(`${team.name} ist offline – Zug wird übersprungen`);
+      else {
+        this.say(tank, tank.hp < 30 ? 'lowhp' : 'turn', 40, 0.75);
+        const foes = g.tanks.filter((k) => k.alive && k.team !== tank.team);
+        if (foes.length && Math.random() < 0.3) this.say(pick(foes), 'taunt', 130);
+      }
       this.sendState();
     }
     isActivePlayer(p) {
@@ -616,6 +622,21 @@
       if (g.active) { g.active.aim = Math.round(g.active.aim); g.active.power = Math.round(g.active.power); }
     }
 
+    // Sprüche: der Gastgeber wählt aus, damit alle denselben Spruch sehen/hören
+    say(t, cat, delay, chance) {
+      const g = this.g;
+      if (!g || !t || (chance !== undefined && Math.random() > chance)) return;
+      const urgent = cat === 'death' || cat === 'drown' || cat === 'win';
+      if (!urgent && t.lastSay && this.tickN - t.lastSay < 70) return;
+      const list = S.LINES[cat];
+      if (!list) return;
+      let text = pick(list);
+      if (list.length > 1 && text === g.lastLine[cat]) text = pick(list.filter((x) => x !== text));
+      g.lastLine[cat] = text;
+      t.lastSay = this.tickN + (delay || 0);
+      if (delay) g.sayQ.push({ at: this.tickN + delay, id: t.id, text });
+      else this.broadcast({ t: 'say', id: t.id, text });
+    }
     gameInput(p, m) {
       if (!this.g || !this.isActivePlayer(p)) return;
       this.applyInput(m);
@@ -711,6 +732,9 @@
       const sp = PHYS.speed(t.power);
       const src = { team: team.idx, ox: t.x, oy: t.y };
       if (w.mode === 'fire' || w.mode === 'aim' || w.mode === 'target') team.st.shots++;
+      g.firedMode = w.mode;
+      if (w.mode === 'fire' || w.mode === 'aim') this.say(t, 'fire', 0, 0.45);
+      else if (['mine', 'strike', 'ram', 'repair'].includes(w.id)) this.say(t, w.id, 0, 0.9);
       const shoot = (type, extra) => {
         const p = Object.assign({ id: g.nextId++, type, x: mx, y: my, vx: dx * sp, vy: dy * sp, owner: t.id, age: 0, fuse: -1, src }, extra || {});
         g.proj.push(p);
@@ -843,6 +867,11 @@
     stepGame() {
       const g = this.g;
       const dt = 1 / 60;
+      if (g.sayQ.length) {
+        const due = g.sayQ.filter((q) => q.at <= this.tickN);
+        g.sayQ = g.sayQ.filter((q) => q.at > this.tickN);
+        for (const q of due) this.broadcast({ t: 'say', id: q.id, text: q.text });
+      }
       if (g.phase === 'over') {
         for (const t of g.tanks) this.updateTank(t);
         if (this.tickN % 6 === 0) this.sendState();
@@ -887,7 +916,9 @@
       g.objs = g.objs.filter((o) => o.alive);
 
       if (g.phase === 'turn') {
+        const before = g.timer;
         g.timer -= dt;
+        if (before > 5 && g.timer <= 5 && !g.fired && act) this.say(act, 'hurry', 0, 0.5);
         if (g.timer <= 0) { g.timer = 0; if (!g.fired) this.sendMsg('Zeit abgelaufen'); this.startSettle(); }
       } else if (g.phase === 'retreat') {
         g.timer -= dt;
@@ -983,6 +1014,7 @@
           const by = t.lastHit >= 0 && t.lastHit !== t.team ? t.lastHit : (g.turnTeam !== t.team ? g.turnTeam : -1);
           if (by >= 0) { g.teams[by].st.kills++; g.teams[by].st.drowns++; if (g.stats && g.stats.team === by) g.stats.kills++; }
           this.broadcast({ t: 'dead', id: t.id, how: 'drown', by });
+          this.say(t, 'drown');
           this.slowmo(55);
           if (t === g.active && (g.phase === 'turn' || g.phase === 'retreat')) this.startSettle();
         }
@@ -1098,7 +1130,7 @@
       const g = this.g;
       this.carve(x, y, r);
       this.broadcast({ t: 'boom', x: Math.round(x), y: Math.round(y), r, k: kind });
-      let n = 0, total = 0, self = 0;
+      let n = 0, total = 0, self = 0, victim = null;
       for (const t of g.tanks) {
         if (!t.alive) continue;
         const dx = t.x - x, dy = t.y - y, d = Math.hypot(dx, dy), reach = r + R;
@@ -1115,6 +1147,7 @@
             if (t.team === src.team) self += real;
             else {
               n++; total += real;
+              if (!victim) victim = t;
               const dist = Math.hypot(t.x - src.ox, t.y - src.oy);
               const st = g.teams[src.team].st;
               if (dist > st.far) st.far = Math.round(dist);
@@ -1125,6 +1158,11 @@
       if (src && (n > 0 || self >= 15) && kind !== 'mg') {
         this.broadcast({ t: 'hit', x: Math.round(x), y: Math.round(y), n, dmg: total, self, team: src.team });
         if (total >= 40 || n >= 2) this.slowmo(40);
+      }
+      if (src) {
+        const shooter = g.active && g.active.team === src.team ? g.active : null;
+        if (victim) { this.say(victim, total >= 35 ? 'hurtbig' : 'hurt', 12, 0.8); this.say(shooter, 'hit', 40, 0.6); }
+        else if (self >= 15) this.say(shooter, 'self', 25, 0.9);
       }
       for (const t of g.tanks) if (!t.alive && !t.drowned) { const d = Math.hypot(t.x - x, t.y - y); if (d < r + R) t.grounded = false; }
       for (const o of g.objs) {
@@ -1189,6 +1227,7 @@
           if (by >= 0) g.teams[by].st.kills++;
           if (g.stats && by === g.stats.team) g.stats.kills++;
           this.broadcast({ t: 'dead', id: t.id, how: 'boom', by });
+          this.say(t, 'death');
           const [r, d, k] = BOOM.death;
           this.explode(t.x, t.y, r, d, k, 'death', null);
         }
@@ -1207,6 +1246,7 @@
         const s = g.stats, tn = g.teams[s.team];
         if (tn) {
           if (s.dmg > tn.st.best) tn.st.best = s.dmg;
+          if (g.fired && s.dmg === 0 && s.self === 0 && (g.firedMode === 'fire' || g.firedMode === 'target') && g.active && g.active.alive) this.say(g.active, 'miss', 0, 0.6);
           if (s.dmg > 0 || s.self > 0) {
             let txt = `${tn.name}: ${s.dmg} Schaden`;
             if (s.kills) txt += ` · ${s.kills} zerstört`;
@@ -1273,6 +1313,7 @@
       store.set(BOARD_KEY, JSON.stringify(b));
       store.del(SAVE_KEY);
       this.lastOver = { t: 'over', winner, rank, awards, stats };
+      if (winner >= 0) { const wt = g.teams[winner].tanks.find((k) => k.alive); if (wt) this.say(wt, 'win'); }
       this.broadcast(this.lastOver);
       this.broadcastLobby();
       this.sendState();
@@ -1320,7 +1361,7 @@
         turnTeam: s.turnTeam, active: null, phase: 'pause', timer: RESUME_WAIT, wind: s.wind, weapon: 'shell', fuel: 100,
         input: noInput(), hold: { u: 0, d: 0, pu: 0, pd: 0 },
         driveV: 0, burst: null, turnCount: s.turnCount, waterY: s.waterY, settleT: 0, waterRaised: false, out: s.out, fired: false,
-        objs: [], chain: [], moved: false, stats: null, crateDone: false, sinceCrate: s.sinceCrate, bot: null, turnHit: false,
+        objs: [], chain: [], moved: false, stats: null, crateDone: false, sinceCrate: s.sinceCrate, bot: null, turnHit: false, sayQ: [], lastLine: {}, firedMode: '',
       };
       const byId = {};
       for (const t of s.tanks) { const k = Object.assign({ vx: 0, vy: 0, grounded: false, bounces: 0 }, t); g.tanks.push(k); byId[k.id] = k; }

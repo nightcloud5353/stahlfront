@@ -35,6 +35,7 @@
   let terrainParts = [];
   let snapPrev = null, snapCur = null, snapAt = 0, snapInt = 50;
   let particles = [], texts = [], tracers = [], marks = [];
+  let says = new Map(); // Sprechblasen: Panzer-ID -> { text, t, x, y }
   const cam = { x: W / 2, y: H / 2, z: 1, manualUntil: 0, shake: 0, overview: false, punch: 0, focus: null };
   let zoomNow = 1;
   const keys = { l: false, r: false, u: false, d: false, pu: false, pd: false };
@@ -260,6 +261,7 @@
       case 'boom': onBoom(m); break;
       case 'carve': if (G) { carveTerrain(m.x, m.y, m.r, false, !!m.raw); if (Math.random() < 0.5) dirt(m.x, m.y, 3); } break;
       case 'dmg': onDmg(m); break;
+      case 'say': if (G) { const p = tankPos(m.id); says.set(m.id, { text: m.text, t: performance.now(), x: p ? p[0] : null, y: p ? p[1] : null }); } break;
       case 'hit': onHit(m); break;
       case 'dead': onDead(m); break;
       case 'fx': onFx(m); break;
@@ -420,7 +422,7 @@
       terrain: buildTerrain(mask, theme), hills: makeHills(),
     };
     snapPrev = snapCur = null;
-    particles = []; texts = []; tracers = []; marks = [];
+    particles = []; texts = []; tracers = []; marks = []; says = new Map();
     cam.overview = false; cam.z = 1; cam.manualUntil = 0; cam.focus = null; cam.punch = 0;
     overInfo = null;
     for (const id of ['over', 'weaponMenu', 'gameMenu', 'help']) $(id).classList.add('hidden');
@@ -1174,6 +1176,7 @@
       ctx.fillText(tx.text, x, y);
       ctx.globalAlpha = 1;
     }
+    drawSays(now, toS, list);
     // Zeitlupe: dunkler Rand
     if (m.sl === 1) {
       const g = ctx.createRadialGradient(vw / 2, vh / 2, Math.min(vw, vh) * 0.3, vw / 2, vh / 2, Math.max(vw, vh) * 0.7);
@@ -1183,6 +1186,56 @@
     if (snapPrev && m.tb) {
       const a = snapCur.tanks.get(m.tb), b = snapPrev.tanks.get(m.tb);
       SND.engine(!!(a && b && a.gr && Math.abs(a.x - b.x) > 0.3 && m.ph !== 'settle'));
+    }
+  }
+
+  // Sprechblasen über dem Kommandanten (Spruch bleibt ~2,8 s, wandert mit dem Panzer)
+  function wrapText(text, maxW) {
+    const words = text.split(' '), lines = [];
+    let cur = '';
+    for (const w of words) {
+      const t = cur ? cur + ' ' + w : w;
+      if (ctx.measureText(t).width > maxW && cur) { lines.push(cur); cur = w; } else cur = t;
+    }
+    if (cur) lines.push(cur);
+    return lines;
+  }
+  function drawSays(now, toS, list) {
+    const DUR = 2800;
+    ctx.font = '700 15px "Barlow Condensed", sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const [id, s] of says) {
+      const age = now - s.t;
+      if (age > DUR) { says.delete(id); continue; }
+      const live = list.find((t) => t.id === id);
+      if (live) { s.x = live.x; s.y = live.y; }
+      if (s.x === null) continue;
+      const [x0, y0] = toS(s.x, s.y - 20);
+      // Sprecher nicht im Bild? Dann Blase am Rand mit Namen davor
+      const off = x0 < 20 || x0 > vw - 20 || y0 < 60 || y0 > vh + 40;
+      const info = G.tankInfo[id], team = info ? G.teams[info.team] : null;
+      const lines = wrapText(off && team ? `${team.name}: ${s.text}` : s.text, 190);
+      const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 20, h = lines.length * 17 + 10;
+      const pop = Math.min(1, age / 120), fade = age > DUR - 300 ? (DUR - age) / 300 : 1;
+      const bx = clamp(x0 + 18, w / 2 + 6, vw - w / 2 - 6), by = clamp(y0 - 46 - h / 2, 70 + h / 2, vh - 120 - h / 2) - (1 - pop) * 6;
+      ctx.globalAlpha = fade;
+      ctx.save();
+      ctx.translate(bx, by); ctx.scale(0.85 + pop * 0.15, 0.85 + pop * 0.15);
+      // Blase mit Spitze zum Kommandanten
+      ctx.fillStyle = '#F4F1E1'; ctx.strokeStyle = off && team ? S.TEAM_COLORS[team.color] : '#1E2218'; ctx.lineWidth = 2;
+      ctx.beginPath();
+      const r = 8, L = -w / 2, T = -h / 2, Rr = w / 2, B = h / 2;
+      const tipX = clamp(x0 - bx, L + 12, Rr - 12);
+      ctx.moveTo(L + r, T); ctx.lineTo(Rr - r, T); ctx.quadraticCurveTo(Rr, T, Rr, T + r);
+      ctx.lineTo(Rr, B - r); ctx.quadraticCurveTo(Rr, B, Rr - r, B);
+      if (!off) { ctx.lineTo(tipX + 7, B); ctx.lineTo(tipX - 4, B + 12); ctx.lineTo(tipX - 3, B); }
+      ctx.lineTo(L + r, B); ctx.quadraticCurveTo(L, B, L, B - r);
+      ctx.lineTo(L, T + r); ctx.quadraticCurveTo(L, T, L + r, T);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#1E2218';
+      lines.forEach((l, i) => ctx.fillText(l, 0, T + 14 + i * 17));
+      ctx.restore();
+      ctx.globalAlpha = 1;
     }
   }
 
