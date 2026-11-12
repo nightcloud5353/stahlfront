@@ -136,7 +136,37 @@
       const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
       return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('');
     }
-    return '';
+    return sha256(s);
+  }
+  // Ersatz, wenn der Browser crypto.subtle nicht anbietet (z. B. Seite über http oder als Datei geöffnet)
+  function sha256(str) {
+    const K = [];
+    let n = 2;
+    while (K.length < 64) { let p = true; for (let i = 2; i * i <= n; i++) if (n % i === 0) { p = false; break; } if (p) K.push((Math.cbrt(n) % 1) * 4294967296 | 0); n++; }
+    const Hh = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+    const bytes = [...new TextEncoder().encode(str)];
+    const bl = bytes.length * 8;
+    bytes.push(0x80);
+    while (bytes.length % 64 !== 56) bytes.push(0);
+    for (let i = 7; i >= 0; i--) bytes.push(i > 3 ? 0 : (bl >>> (i * 8)) & 255);
+    const rot = (v, c) => (v >>> c) | (v << (32 - c));
+    for (let o = 0; o < bytes.length; o += 64) {
+      const w = [];
+      for (let i = 0; i < 16; i++) w[i] = (bytes[o + i * 4] << 24) | (bytes[o + i * 4 + 1] << 16) | (bytes[o + i * 4 + 2] << 8) | bytes[o + i * 4 + 3];
+      for (let i = 16; i < 64; i++) {
+        const s0 = rot(w[i - 15], 7) ^ rot(w[i - 15], 18) ^ (w[i - 15] >>> 3);
+        const s1 = rot(w[i - 2], 17) ^ rot(w[i - 2], 19) ^ (w[i - 2] >>> 10);
+        w[i] = (w[i - 16] + s0 + w[i - 7] + s1) | 0;
+      }
+      let [a, b, c, d, e, f, g, h] = Hh;
+      for (let i = 0; i < 64; i++) {
+        const t1 = (h + (rot(e, 6) ^ rot(e, 11) ^ rot(e, 25)) + ((e & f) ^ (~e & g)) + K[i] + w[i]) | 0;
+        const t2 = ((rot(a, 2) ^ rot(a, 13) ^ rot(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) | 0;
+        h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;
+      }
+      [a, b, c, d, e, f, g, h].forEach((v, i) => { Hh[i] = (Hh[i] + v) | 0; });
+    }
+    return Hh.map((v) => (v >>> 0).toString(16).padStart(8, '0')).join('');
   }
   $('gateForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -379,12 +409,16 @@
     const d = img.data;
     const hash = (x, y) => { let h = Math.imul(x, 374761393) + Math.imul(y, 668265263) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967295; };
     for (let x = 0; x < W; x++) {
-      let depth = 0;
+      let depth = 0, top = -1, gap = 999;
       const sx = Math.sin(x * 0.045);
       for (let y = 0; y < H; y++) {
         const k = y * W + x;
-        if (!mask[k]) { depth = 0; continue; }
+        if (!mask[k]) { depth = 0; gap++; continue; }
         depth++;
+        // Schattierung ab der Oberkante des Bodens; Höhlen (kleine Lücken) setzen sie nicht zurück, schwebende Platten schon
+        if (gap > 70) top = y;
+        gap = 0;
+        const shade = y - top;
         const o = k * 4;
         const n = hash(x, y);
         let c;
@@ -392,7 +426,7 @@
         else if (depth <= 7) c = th.top2;
         else {
           const t = 0.5 + 0.25 * (Math.sin(x * 0.045 + Math.sin(y * 0.031) * 2.2) + Math.sin(y * 0.07 + sx));
-          const dk = 1 - Math.min(depth, 300) / 300 * 0.28;
+          const dk = 1 - Math.min(shade, 300) / 300 * 0.28;
           const nz = (n - 0.5) * 16;
           d[o] = clamp((lerp(th.d1[0], th.d2[0], t) + nz) * dk, 0, 255);
           d[o + 1] = clamp((lerp(th.d1[1], th.d2[1], t) + nz) * dk, 0, 255);

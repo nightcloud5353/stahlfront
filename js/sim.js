@@ -81,8 +81,8 @@
       this.acc += now - this.lastStep;
       this.lastStep = now;
       let n = 0;
-      while (this.acc >= 1000 / 60 && n < 30) { this.step(); this.acc -= 1000 / 60; n++; }
-      if (n >= 30) this.acc = 0;
+      while (this.acc >= 1000 / 60 && n < 90) { this.step(); this.acc -= 1000 / 60; n++; }
+      if (n >= 90) this.acc = 0;
     }
     step() {
       this.tickN++;
