@@ -396,7 +396,7 @@
       for (const it of list) {
         const b = document.createElement('button');
         b.className = 'chip' + (it.id === cur ? ' on' : '');
-        if (key === 'camo') { const sw = document.createElement('i'); sw.style.background = `linear-gradient(135deg, ${it.base} 50%, ${it.spot} 50%)`; b.appendChild(sw); }
+        if (key === 'camo') { const sw = document.createElement('i'); sw.style.background = it.swatch || `linear-gradient(135deg, ${it.base} 50%, ${it.spot} 50%)`; b.appendChild(sw); }
         b.appendChild(document.createTextNode(it.name));
         b.addEventListener('click', () => {
           SND.click();

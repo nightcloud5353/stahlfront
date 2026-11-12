@@ -29,7 +29,36 @@
     if (cm.pat === 'spots') for (let i = 0; i < Math.ceil(w / 6); i++) { c.beginPath(); c.ellipse(x0 + prand(seed + i) * w, y0 + prand(seed + i + 40) * h, 1.6 + prand(seed + i + 9) * 2.6, 0.8 + prand(seed + i + 3) * 1.1, prand(i) * 0.6, 0, 6.283); c.fill(); }
     else if (cm.pat === 'blobs') for (let i = 0; i < Math.ceil(w / 5); i++) { c.beginPath(); c.ellipse(x0 + prand(seed + i) * w, y0 + prand(seed + i + 40) * h, 2 + prand(seed + i + 9) * 3, 1 + prand(seed + i + 3) * 1.4, prand(i + 7) * 3, 0, 6.283); c.fill(); }
     else if (cm.pat === 'digital') for (let i = 0; i < Math.ceil(w * h / 7); i++) c.fillRect(Math.round((x0 + prand(seed + i) * w) * 2) / 2, Math.round((y0 + prand(seed + i + 70) * h) * 2) / 2, 0.9, 0.9);
+    else if (cm.pat === 'unicorn') tkUnicorn(c, x0, y0, x1, y1, seed);
     else if (cm.pat === 'stripes') { c.lineWidth = 0.9; for (let x = x0 - 6; x < x1 + 6; x += 3.2 + prand(seed + x) * 1.6) { c.beginPath(); c.moveTo(x, y0); c.lineTo(x - 2.5 + prand(x) * 2, y1); c.stroke(); } }
+  }
+  // Einhorn-Tarnung: Regenbogen-Bogen, Glitzersterne und kleine Herzen
+  const RAINBOW = ['#FF7FAF', '#FFB86B', '#FFE97A', '#8FE3A6', '#7FC8FF', '#B79BFF'];
+  function tkStar(c, x, y, r) {
+    c.beginPath();
+    for (let i = 0; i < 8; i++) { const a = (i / 8) * 6.283, d = i % 2 ? r * 0.32 : r; c.lineTo(x + Math.cos(a) * d, y + Math.sin(a) * d); }
+    c.closePath(); c.fill();
+  }
+  function tkHeart(c, x, y, s) {
+    c.beginPath();
+    c.moveTo(x, y + s * 0.9);
+    c.bezierCurveTo(x - s * 1.4, y - s * 0.1, x - s * 0.6, y - s * 1.1, x, y - s * 0.35);
+    c.bezierCurveTo(x + s * 0.6, y - s * 1.1, x + s * 1.4, y - s * 0.1, x, y + s * 0.9);
+    c.fill();
+  }
+  function tkUnicorn(c, x0, y0, x1, y1, seed) {
+    const w = x1 - x0, h = y1 - y0;
+    // Regenbogen: Bögen um einen Punkt unterhalb der Platte, nur oben sichtbar
+    const cx = x0 + w * (0.3 + prand(seed) * 0.4), cy = y1 + h * 0.9;
+    const band = Math.max(0.55, h / 10), r0 = h * 1.55;
+    c.lineWidth = band; c.globalAlpha = 0.8;
+    RAINBOW.forEach((col, i) => { c.strokeStyle = col; c.beginPath(); c.arc(cx, cy, r0 - i * band, Math.PI * 1.05, Math.PI * 1.95); c.stroke(); });
+    c.globalAlpha = 1;
+    for (let i = 0; i < Math.ceil(w / 7); i++) {
+      const x = x0 + prand(seed + i * 3) * w, y = y0 + prand(seed + i * 3 + 50) * h;
+      if (prand(seed + i + 90) < 0.35) { c.fillStyle = '#E8457F'; tkHeart(c, x, y, 0.7 + prand(seed + i + 7) * 0.4); }
+      else { c.fillStyle = prand(seed + i + 20) < 0.5 ? '#FFFFFF' : '#FFF3A8'; tkStar(c, x, y, 0.9 + prand(seed + i + 11) * 0.8); }
+    }
   }
   // Panzerplatte: Grundfarbe, Tarnmuster, Licht von oben, Schmutz unten, Kanten
   function tkPlate(c, pts, col, cm, o) {
@@ -101,6 +130,16 @@
         c.fillStyle = '#F2C230'; c.beginPath();
         c.moveTo(hx - 3.5, hy - 3); c.lineTo(hx - 3.5, hy - 6); c.lineTo(hx - 1.8, hy - 4.3); c.lineTo(hx, hy - 6.6); c.lineTo(hx + 1.8, hy - 4.3); c.lineTo(hx + 3.5, hy - 6); c.lineTo(hx + 3.5, hy - 3);
         c.closePath(); c.fill(); break;
+      case 'horn': {
+        // goldenes Spiralhorn, leicht nach vorn geneigt, mit Mähnenlocke
+        const tip = [hx + 1.6, hy - 10.5];
+        c.fillStyle = '#F6D36B'; c.beginPath(); c.moveTo(hx - 1.6, hy - 3.2); c.lineTo(tip[0], tip[1]); c.lineTo(hx + 1.6, hy - 3.2); c.closePath(); c.fill();
+        c.strokeStyle = '#C9962E'; c.lineWidth = 0.35;
+        for (let k = 1; k <= 4; k++) { const f = k / 5, y = hy - 3.2 - f * 7.3, half = 1.6 * (1 - f), x = hx + f * 1.6; c.beginPath(); c.moveTo(x - half, y + 0.5); c.lineTo(x + half, y - 0.3); c.stroke(); }
+        c.fillStyle = '#B79BFF'; c.beginPath(); c.ellipse(hx - 3.2, hy - 3.4, 1.6, 1.1, -0.5, 0, 6.283); c.fill();
+        c.fillStyle = '#7FC8FF'; c.beginPath(); c.ellipse(hx - 4.2, hy - 2.2, 1.2, 0.9, -0.2, 0, 6.283); c.fill();
+        break;
+      }
       default:
     }
   }

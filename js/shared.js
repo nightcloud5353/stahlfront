@@ -64,6 +64,8 @@
     { id: 'stadt',  name: 'Stadt',   base: '#6F747A', turret: '#7D8288', dark: '#2E3236', spot: '#4E5358', pat: 'digital' },
     { id: 'tiger',  name: 'Tiger',   base: '#B5853E', turret: '#C29149', dark: '#3A2A14', spot: '#3A2A14', pat: 'stripes' },
     { id: 'nacht',  name: 'Nacht',   base: '#2E3238', turret: '#383D44', dark: '#121417', spot: '#23262B', pat: 'spots' },
+    { id: 'einhorn', name: 'Einhorn', base: '#F28DC0', turret: '#F7A8D1', dark: '#7A2E5A', spot: '#FFFFFF', pat: 'unicorn',
+      swatch: 'linear-gradient(135deg, #F28DC0 0 45%, #FFC27A 45% 55%, #FFF08A 55% 65%, #9EEBB0 65% 75%, #8FD3FF 75% 85%, #C3A6FF 85%)' },
   ];
   // Kopfbedeckung des Klecks-Kommandanten
   const HATS = [
@@ -73,6 +75,7 @@
     { id: 'muetze', name: 'Offiziersmütze' },
     { id: 'kappe', name: 'Panzerkappe' },
     { id: 'krone', name: 'Krone' },
+    { id: 'horn', name: 'Einhorn-Horn' },
   ];
 
   // Sprüche der Klecks-Kommandanten (eigene Texte)
