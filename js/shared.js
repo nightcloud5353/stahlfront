@@ -37,13 +37,13 @@
 
   // Optik der Karte (Farben)
   const THEMES = [
-    { name: 'Feldgrau', sky1: '#7D878C', sky2: '#C3C6BC', hills: '#8A8F80', smoke: '#5B5F5E',
+    { name: 'Feldgrau', ground: 'grass', sky1: '#7D878C', sky2: '#C3C6BC', hills: '#8A8F80', smoke: '#5B5F5E',
       top1: [112, 121, 66], top2: [90, 98, 54], d1: [80, 70, 54], d2: [62, 54, 41], water: '#3A4F55' },
-    { name: 'Wüste', sky1: '#B97A55', sky2: '#EBCB9C', hills: '#C9A479', smoke: '#6B5A4A',
+    { name: 'Wüste', ground: 'sand', sky1: '#B97A55', sky2: '#EBCB9C', hills: '#C9A479', smoke: '#6B5A4A',
       top1: [214, 184, 132], top2: [196, 162, 112], d1: [176, 138, 92], d2: [150, 114, 74], water: '#3E6E78' },
-    { name: 'Winter', sky1: '#6F7C88', sky2: '#C4CCD3', hills: '#9AA6B0', smoke: '#59626B',
+    { name: 'Winter', ground: 'snow', sky1: '#6F7C88', sky2: '#C4CCD3', hills: '#9AA6B0', smoke: '#59626B',
       top1: [236, 241, 245], top2: [205, 214, 222], d1: [96, 102, 112], d2: [76, 81, 90], water: '#3B5568' },
-    { name: 'Dämmerung', sky1: '#2E3442', sky2: '#9A7F6E', hills: '#4F4C52', smoke: '#2A2C33',
+    { name: 'Dämmerung', ground: 'grass', sky1: '#2E3442', sky2: '#9A7F6E', hills: '#4F4C52', smoke: '#2A2C33',
       top1: [96, 100, 62], top2: [74, 78, 48], d1: [58, 50, 42], d2: [44, 38, 32], water: '#263640' },
   ];
 

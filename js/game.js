@@ -465,46 +465,120 @@
   }
 
   const hash = (x, y) => { let h = Math.imul(x, 374761393) + Math.imul(y, 668265263) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967295; };
+  // Weiches Rauschen (Wertrauschen, bilinear) – natürlichere Muster im Erdreich als Sinuswellen
+  function vnoise(x, y, sc, seed) {
+    const fx = x / sc, fy = y / sc, ix = Math.floor(fx), iy = Math.floor(fy), tx = fx - ix, ty = fy - iy;
+    const sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
+    const a = hash(ix + seed, iy), b = hash(ix + 1 + seed, iy), c = hash(ix + seed, iy + 1), d = hash(ix + 1 + seed, iy + 1);
+    return (a + (b - a) * sx) * (1 - sy) + (c + (d - c) * sx) * sy;
+  }
   function buildTerrain(mask, th) {
     const mk = () => { const c = document.createElement('canvas'); c.width = W; c.height = H; return c; };
     const soil = mk(), conc = mk(), back = mk();
     const sx = soil.getContext('2d'), cxx = conc.getContext('2d'), bx = back.getContext('2d');
     const img = sx.createImageData(W, H), d = img.data;
     const cimg = cxx.createImageData(W, H);
+    const ground = th.ground || 'grass';
+    const dep = new Uint16Array(W * H); // Abstand zur Oberkante des jeweiligen Erdstücks
+    const mix = (c1, c2, t) => [lerp(c1[0], c2[0], t), lerp(c1[1], c2[1], t), lerp(c1[2], c2[2], t)];
+    // Geglättetes Höhenprofil der Oberfläche (für das Abdunkeln nach unten). Dünne schwebende Felsen, Spalten
+    // und Höhlen beeinflussen es kaum – sonst entstehen senkrechte Streifen im Erdreich.
+    const topRaw = new Float32Array(W), topY = new Float32Array(W);
     for (let x = 0; x < W; x++) {
-      let depth = 0, top = -1, gap = 999;
-      const sxw = Math.sin(x * 0.045);
+      let y = 0;
+      for (; y < H - 30; y++) if (mask[y * W + x] && mask[(y + 15) * W + x] && mask[(y + 30) * W + x]) break;
+      topRaw[x] = y;
+    }
+    const tmp = new Float32Array(W);
+    for (let x = 0; x < W; x++) { let m = H; for (let i = Math.max(0, x - 12); i <= Math.min(W - 1, x + 12); i++) m = Math.min(m, topRaw[i]); tmp[x] = m; }
+    for (let x = 0; x < W; x++) { let sum = 0, cnt = 0; for (let i = Math.max(0, x - 110); i <= Math.min(W - 1, x + 110); i++) { sum += tmp[i]; cnt++; } topY[x] = sum / cnt; }
+    for (let x = 0; x < W; x++) {
+      let depth = 0, gap = 999, open = false;
+      const surf = topY[x];
+      // Dicke der Oberflächenschicht schwankt von Spalte zu Spalte (ausgefranste Grasnarbe, Schneewehen)
+      const wob = Math.sin(x * 0.11) * 1.2 + Math.sin(x * 0.023 + 1.7) * 1.6 + (hash(x, 1) - 0.5) * 2.2;
+      const fringe = ground === 'snow' ? 9 + wob * 1.4 : ground === 'sand' ? 7 + wob : 8 + wob * 1.3;
+      const blade = hash(x, 2), blade2 = hash(x >> 1, 3);
       for (let y = 0; y < H; y++) {
         const k = y * W + x, v = mask[k];
         if (!v) { depth = 0; gap++; continue; }
+        if (depth === 0) open = gap > 70; // Oberfläche unter freiem Himmel (nicht Höhlendecke/-boden)
         depth++;
-        if (gap > 70) top = y;
         gap = 0;
-        const o = k * 4, n = hash(x, y);
+        dep[k] = Math.min(depth, 65535);
         if (v === 2) continue; // Beton: eigene Ebene, siehe paintConcrete
-        const shade = y - top;
+        const o = k * 4, n = hash(x, y);
         // Umgebungsschatten: unter Überhängen und in Höhlen dunkler, Seitenwände etwas dunkler
         let f = 1;
         for (let q = 1; q <= 5; q++) if (y + q < H && !mask[k + q * W]) { f = 0.55 + q * 0.08; break; }
         if (f === 1 && depth > 7 && ((x > 0 && !mask[k - 1]) || (x < W - 1 && !mask[k + 1]))) f = 0.84;
         let c;
-        if (depth <= 3) c = th.top1;
-        else if (depth <= 7) c = th.top2;
-        else {
-          const t = 0.5 + 0.25 * (Math.sin(x * 0.045 + Math.sin(y * 0.031) * 2.2) + Math.sin(y * 0.07 + sxw));
-          const dk = (1 - Math.min(shade, 300) / 300 * 0.28) * f;
-          const nz = (n - 0.5) * 16;
-          d[o] = clamp((lerp(th.d1[0], th.d2[0], t) + nz) * dk, 0, 255);
-          d[o + 1] = clamp((lerp(th.d1[1], th.d2[1], t) + nz) * dk, 0, 255);
-          d[o + 2] = clamp((lerp(th.d1[2], th.d2[2], t) + nz) * dk, 0, 255);
-          if (n > 0.995) { d[o] += 36; d[o + 1] += 34; d[o + 2] += 28; }      // Kiesel
-          else if (n < 0.004) { d[o] *= 0.7; d[o + 1] *= 0.7; d[o + 2] *= 0.7; } // dunkle Steinchen
-          d[o + 3] = 255;
+        if (open && depth <= fringe) {
+          const t = (depth - 1) / Math.max(1, fringe - 1); // 0 oben … 1 unten
+          if (ground === 'snow') {
+            c = mix(th.top1, th.top2, t * t);
+            if (depth === 1) c = [c[0] + 14, c[1] + 14, c[2] + 14];
+            if (t > 0.75) c = [c[0] * 0.86, c[1] * 0.9, c[2] * 0.97]; // bläulicher Schatten an der Unterkante
+            if (n > 0.992) c = [255, 255, 255]; // Glitzern
+          } else if (ground === 'sand') {
+            const rip = Math.sin(x * 0.42 + y * 0.9 + Math.sin(x * 0.05) * 3) * 0.5 + 0.5;
+            c = mix(th.top1, th.top2, Math.min(1, t * 0.8 + rip * 0.35));
+            if (depth === 1) c = [c[0] + 18, c[1] + 16, c[2] + 10];
+          } else {
+            // Gras: Halme als helle/dunkle Streifen, Spitzen heller, dunkler Saum zur Erde
+            const tone = (blade - 0.5) * 0.5 + (blade2 - 0.5) * 0.3;
+            c = mix(th.top1, th.top2, clamp(t * 0.9 + tone, 0, 1));
+            const hl = depth === 1 ? 30 : depth === 2 ? 12 : 0;
+            c = [c[0] + hl, c[1] + hl, c[2] + hl * 0.5];
+            if (t > 0.8) c = [c[0] * 0.72, c[1] * 0.74, c[2] * 0.7];
+            if (depth === 2 && n > 0.988) c = n > 0.995 ? [236, 222, 120] : [226, 228, 214]; // Blümchen
+          }
+          const nz = (n - 0.5) * 12;
+          d[o] = clamp((c[0] + nz) * f, 0, 255); d[o + 1] = clamp((c[1] + nz) * f, 0, 255); d[o + 2] = clamp((c[2] + nz) * f, 0, 255); d[o + 3] = 255;
           continue;
         }
-        // Grasnarbe mit heller Lichtkante oben
-        const nz = (n - 0.5) * 18, hl = depth === 1 ? 24 : depth === 2 ? 10 : 0;
-        d[o] = clamp((c[0] + nz + hl) * f, 0, 255); d[o + 1] = clamp((c[1] + nz + hl) * f, 0, 255); d[o + 2] = clamp((c[2] + nz + hl * 0.6) * f, 0, 255); d[o + 3] = 255;
+        // Erdreich: waagerechte Gesteinsschichten (unabhängig von Höhlen), Wellenmuster, nach unten dunkler
+        const sy = y + (vnoise(x, 0, 140, 21) - 0.5) * 34 + (vnoise(x, 0, 37, 22) - 0.5) * 8;
+        const band = Math.floor(sy / 26), inBand = sy / 26 - band;
+        const bandK = (hash(band, 5) - 0.5) * 0.42 + (inBand < 0.05 ? -0.16 : inBand < 0.1 ? 0.07 : 0);
+        const fbm = vnoise(x, y * 1.8, 48, 31) * 0.55 + vnoise(x, y * 1.4, 17, 32) * 0.3 + vnoise(x, y, 6, 33) * 0.15;
+        const t = clamp(0.42 + (fbm - 0.5) * 1.7 + bandK, 0, 1);
+        c = mix(th.d1, th.d2, t);
+        // Licht von oben links auf freiliegenden Kanten (Klippen, Höhlenränder), wenn keine Grasnarbe darauf liegt
+        if (depth > 1 && ((x > 0 && !mask[k - 1]) || (y > 0 && !mask[k - W] && depth > 2))) c = [c[0] * 1.16 + 6, c[1] * 1.16 + 6, c[2] * 1.14 + 5];
+        let dk = (1 - clamp(y - surf, 0, 420) / 420 * 0.3) * (1 + bandK * 0.35) * f;
+        if (!open && depth <= 3) dk *= 0.88; // festgetretener Boden in Höhlen
+        const nz = (n - 0.5) * 16;
+        d[o] = clamp((c[0] + nz) * dk, 0, 255);
+        d[o + 1] = clamp((c[1] + nz) * dk, 0, 255);
+        d[o + 2] = clamp((c[2] + nz) * dk, 0, 255);
+        if (n > 0.996) { d[o] += 18; d[o + 1] += 17; d[o + 2] += 14; }      // Kiesel
+        else if (n < 0.004) { d[o] *= 0.7; d[o + 1] *= 0.7; d[o + 2] *= 0.7; } // dunkle Steinchen
+        d[o + 3] = 255;
+      }
+    }
+    // Steine im Erdreich: rundlich, Licht von oben links, Schatten unten rechts
+    const soilLum = (th.d1[0] + th.d1[1] + th.d1[2] + th.d2[0] + th.d2[1] + th.d2[2]) / 6;
+    // Steinfarbe aus dem Erdreich abgeleitet (etwas heller, grauer) – passt so zu jedem Thema
+    const soilMid = mix(th.d1, th.d2, 0.5), grey = (soilMid[0] + soilMid[1] + soilMid[2]) / 3;
+    const stoneCol = soilMid.map((v) => lerp(v, grey, 0.45) * 1.22);
+    for (let i = 0; i < (W * H) / 2600; i++) {
+      const cx = Math.floor(hash(i, 11) * W), cy = Math.floor(hash(i, 12) * H);
+      const k0 = cy * W + cx;
+      if (mask[k0] !== 1 || dep[k0] < 16) continue;
+      const rx = 2 + hash(i, 13) * 4.5, ry = rx * (0.55 + hash(i, 14) * 0.3), rot = (hash(i, 15) - 0.5) * 1.2;
+      const ca = Math.cos(rot), sa = Math.sin(rot), R0 = Math.ceil(rx) + 1;
+      const base = mix(stoneCol, soilMid, hash(i, 16) * 0.35);
+      for (let dy = -R0; dy <= R0; dy++) for (let dx = -R0; dx <= R0; dx++) {
+        const x = cx + dx, y = cy + dy; if (x < 0 || x >= W || y < 0 || y >= H) continue;
+        const k = y * W + x; if (mask[k] !== 1 || dep[k] < 10) continue;
+        const u = (dx * ca + dy * sa) / rx, w = (-dx * sa + dy * ca) / ry, r2 = u * u + w * w;
+        if (r2 > 1) continue;
+        const o = k * 4, lit = -(u * 0.6 + w * 0.8); // > 0: zum Licht hin
+        let m = 1 + lit * 0.16;
+        if (r2 > 0.7) m *= 0.78; // dunkler Rand
+        const dk = clamp((d[o] + d[o + 1] + d[o + 2]) / 3 / soilLum, 0.5, 1.15); // Tiefe/Schatten des Erdreichs übernehmen
+        d[o] = clamp(base[0] * m * dk, 0, 255); d[o + 1] = clamp(base[1] * m * dk, 0, 255); d[o + 2] = clamp(base[2] * m * dk, 0, 255);
       }
     }
     sx.putImageData(img, 0, 0);
@@ -528,8 +602,13 @@
       bx.lineTo(x, top + 6);
     }
     bx.lineTo(W, H); bx.closePath(); bx.fill();
-    bx.globalAlpha = 0.18; bx.fillStyle = '#000';
-    for (let i = 0; i < 900; i++) bx.fillRect(Math.random() * W, Math.random() * H, 2 + Math.random() * 6, 1 + Math.random() * 3);
+    // Struktur der Rückwand (nur auf der Wand selbst, nicht im Himmel)
+    bx.save(); bx.globalCompositeOperation = 'source-atop';
+    bx.globalAlpha = 0.16; bx.fillStyle = '#000';
+    for (let i = 0; i < 1400; i++) bx.fillRect(Math.random() * W, Math.random() * H, 2 + Math.random() * 6, 1 + Math.random() * 3);
+    bx.globalAlpha = 0.06; bx.fillStyle = '#fff';
+    for (let i = 0; i < 500; i++) bx.fillRect(Math.random() * W, Math.random() * H, 2 + Math.random() * 4, 1 + Math.random() * 2);
+    bx.restore();
     const T = { soil, sx, conc, cxx, back, cimg, burn: new Uint8Array(W * H) };
     paintConcrete(T, mask, 0, 0, W - 1, H - 1);
     return T;
