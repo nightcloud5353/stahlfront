@@ -464,13 +464,13 @@
     if (G.myTeam < 0) toast('Du schaust zu – nächste Runde bist du dabei.', 'warn');
   }
 
+  const hash = (x, y) => { let h = Math.imul(x, 374761393) + Math.imul(y, 668265263) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967295; };
   function buildTerrain(mask, th) {
     const mk = () => { const c = document.createElement('canvas'); c.width = W; c.height = H; return c; };
     const soil = mk(), conc = mk(), back = mk();
     const sx = soil.getContext('2d'), cxx = conc.getContext('2d'), bx = back.getContext('2d');
     const img = sx.createImageData(W, H), d = img.data;
-    const cimg = cxx.createImageData(W, H), cd = cimg.data;
-    const hash = (x, y) => { let h = Math.imul(x, 374761393) + Math.imul(y, 668265263) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967295; };
+    const cimg = cxx.createImageData(W, H);
     for (let x = 0; x < W; x++) {
       let depth = 0, top = -1, gap = 999;
       const sxw = Math.sin(x * 0.045);
@@ -481,13 +481,7 @@
         if (gap > 70) top = y;
         gap = 0;
         const o = k * 4, n = hash(x, y);
-        if (v === 2) {
-          // Beton: grau, Fugen, leichte Flecken
-          const seam = (x % 24 === 0 || y % 12 === 0) ? -22 : 0;
-          const g0 = 128 + (n - 0.5) * 18 + seam + (depth <= 2 ? 18 : 0);
-          cd[o] = g0; cd[o + 1] = g0 + 2; cd[o + 2] = g0 + 6; cd[o + 3] = 255;
-          continue;
-        }
+        if (v === 2) continue; // Beton: eigene Ebene, siehe paintConcrete
         const shade = y - top;
         // Umgebungsschatten: unter Überhängen und in Höhlen dunkler, Seitenwände etwas dunkler
         let f = 1;
@@ -514,7 +508,6 @@
       }
     }
     sx.putImageData(img, 0, 0);
-    cxx.putImageData(cimg, 0, 0);
     // Rückwand: dunkle Erde unter der ursprünglichen Oberfläche
     bx.fillStyle = `rgb(${Math.round(th.d2[0] * 0.58)},${Math.round(th.d2[1] * 0.58)},${Math.round(th.d2[2] * 0.58)})`;
     bx.beginPath(); bx.moveTo(0, H);
@@ -537,7 +530,39 @@
     bx.lineTo(W, H); bx.closePath(); bx.fill();
     bx.globalAlpha = 0.18; bx.fillStyle = '#000';
     for (let i = 0; i < 900; i++) bx.fillRect(Math.random() * W, Math.random() * H, 2 + Math.random() * 6, 1 + Math.random() * 3);
-    return { soil, sx, conc, cxx, back };
+    const T = { soil, sx, conc, cxx, back, cimg, burn: new Uint8Array(W * H) };
+    paintConcrete(T, mask, 0, 0, W - 1, H - 1);
+    return T;
+  }
+  // Beton wird Pixel für Pixel aus der Geländemaske gezeichnet – genau dort, wo die Simulation Beton hat.
+  // Dunkle Kontur an jeder Kante: Lücken in Brücken und Bunkern sind so klar vom Hintergrund zu unterscheiden.
+  // burn = Spuren von Explosionen: frische, helle Bruchkante am Loch, angesengte Fläche drumherum.
+  function paintConcrete(T, mask, x0, y0, x1, y1) {
+    x0 = Math.max(0, Math.floor(x0)); y0 = Math.max(0, Math.floor(y0));
+    x1 = Math.min(W - 1, Math.ceil(x1)); y1 = Math.min(H - 1, Math.ceil(y1));
+    if (x1 < x0 || y1 < y0) return;
+    const cd = T.cimg.data, burn = T.burn;
+    const air = (x, y) => x >= 0 && x < W && y >= 0 && y < H && mask[y * W + x] === 0;
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const k = y * W + x, o = k * 4;
+        if (mask[k] !== 2) { cd[o + 3] = 0; continue; }
+        const n = hash(x, y), bn = burn[k];
+        let r, g, b;
+        if (air(x - 1, y) || air(x + 1, y) || air(x, y - 1) || air(x, y + 1)) {
+          r = 38; g = 40; b = 44; // Kontur
+        } else if (bn && (air(x - 2, y) || air(x + 2, y) || air(x, y - 2) || air(x, y + 2) || air(x - 1, y - 1) || air(x + 1, y - 1) || air(x - 1, y + 1) || air(x + 1, y + 1))) {
+          const v = 182 + (n - 0.5) * 34; r = v; g = v - 4; b = v - 12; // frische Bruchkante
+        } else {
+          const seam = (x % 24 === 0 || y % 12 === 0) ? -22 : 0;
+          const top = air(x, y - 2) || air(x, y - 3) ? 20 : 0;
+          const v = (138 + (n - 0.5) * 18 + seam + top) * (1 - bn / 255 * 0.4);
+          r = v; g = v + 2; b = v + 6;
+        }
+        cd[o] = r; cd[o + 1] = g; cd[o + 2] = b; cd[o + 3] = 255;
+      }
+    }
+    T.cxx.putImageData(T.cimg, 0, 0, x0, y0, x1 - x0 + 1, y1 - y0 + 1);
   }
   // Explosionsloch – wie in der Simulation: Erde im vollen Radius, Beton nur im kleineren (raw = alles)
   function carveTerrain(x, y, r, scorch, raw) {
@@ -553,13 +578,6 @@
     T.sx.globalCompositeOperation = 'destination-out';
     T.sx.beginPath(); T.sx.arc(x, y, r, 0, Math.PI * 2); T.sx.fill();
     T.sx.restore();
-    if (rc > 0) {
-      T.cxx.save();
-      if (scorch) { T.cxx.globalCompositeOperation = 'source-atop'; T.cxx.fillStyle = 'rgba(20, 20, 20, 0.45)'; T.cxx.beginPath(); T.cxx.arc(x, y, rc + 4, 0, Math.PI * 2); T.cxx.fill(); }
-      T.cxx.globalCompositeOperation = 'destination-out';
-      T.cxx.beginPath(); T.cxx.arc(x, y, rc, 0, Math.PI * 2); T.cxx.fill();
-      T.cxx.restore();
-    }
     const m = G.mask, cx = Math.round(x), cy = Math.round(y);
     for (let dy = -r; dy <= r; dy++) {
       const yy = cy + dy; if (yy < 0 || yy >= H) continue;
@@ -571,6 +589,19 @@
         if (v === 1 || (v === 2 && Math.abs(xx - cx) <= spC)) m[row + xx] = 0;
       }
     }
+    // Beton neu zeichnen (nach der Maske, damit Bild und Simulation übereinstimmen)
+    const rb = rc + 6;
+    if (scorch && rc > 0) {
+      for (let dy = -rb; dy <= rb; dy++) {
+        const yy = cy + dy; if (yy < 0 || yy >= H) continue;
+        for (let dx = -rb; dx <= rb; dx++) {
+          const xx = cx + dx, d = Math.hypot(dx, dy); if (xx < 0 || xx >= W || d > rb) continue;
+          const k = yy * W + xx;
+          if (m[k] === 2) T.burn[k] = Math.min(255, T.burn[k] + 70 + 110 * (1 - d / rb));
+        }
+      }
+    }
+    paintConcrete(T, m, cx - rb - 3, cy - rb - 3, cx + rb + 3, cy + rb + 3);
   }
   const solid = (x, y) => { x = Math.floor(x); y = Math.floor(y); return x >= 0 && x < W && y >= 0 && y < H && G.mask[y * W + x] !== 0; };
   function makeHills() {
