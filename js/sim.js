@@ -2,7 +2,7 @@
 // Konstanten/Hilfen: sim-base.js · weitere Teile der Klasse: sim-terrain.js, sim-world.js, sim-weapons.js, sim-bot.js
 (function (root) {
   'use strict';
-  const { S, W, H, WEAPONS, PHYS, SUDDEN_DEATH_ROUNDS, SUDDEN_DEATH_CAVES, WATER_RISE, CRATE_EVERY, CRATE_CHANCE, RESUME_WAIT, C4_FUSE, SAVE_KEY, BOARD_KEY, BOOM, WMAP, rand, clamp, r1, shuffle, pick, store, noInput, validLook } = root.SimBase;
+  const { S, W, H, WEAPONS, PHYS, SUDDEN_DEATH_ROUNDS, SUDDEN_DEATH_CAVES, WATER_RISE, WATER_RISE_CAVES, CRATE_EVERY, CRATE_CHANCE, RESUME_WAIT, C4_FUSE, SAVE_KEY, BOARD_KEY, BOOM, WMAP, rand, clamp, r1, shuffle, pick, store, noInput, validLook } = root.SimBase;
 
   class Sim {
     constructor() {
@@ -536,7 +536,7 @@
       const sdRounds = g.map === 'hoehlen' ? SUDDEN_DEATH_CAVES : SUDDEN_DEATH_ROUNDS;
       if (!g.waterRaised && g.turnCount >= g.teams.length * sdRounds) {
         if (g.turnCount === g.teams.length * sdRounds) this.sendMsg('HOCHWASSER – das Wasser steigt jede Runde!', 'warn');
-        g.waterY = Math.round(g.waterY - WATER_RISE / Math.max(1, alive.length));
+        g.waterY = Math.round(g.waterY - (g.map === 'hoehlen' ? WATER_RISE_CAVES : WATER_RISE) / Math.max(1, alive.length));
         g.waterRaised = true;
         g.settleT = 0;
         return;

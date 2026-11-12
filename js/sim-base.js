@@ -19,6 +19,7 @@
   const SUDDEN_DEATH_ROUNDS = 7;
   const SUDDEN_DEATH_CAVES = 5; // Höhlen: viel Deckung, Gefechte dauern sonst doppelt so lange
   const WATER_RISE = 24;      // px pro Runde (verteilt auf die Züge der noch lebenden Teams)
+  const WATER_RISE_CAVES = 40; // Höhlen: steigt schneller (getestet: 40 kürzt am meisten, ohne dass nur noch das Wasser entscheidet)
   const BARREL_R = 7;
   const CRATE_R = 8;
   const CRATE_EVERY = 3;
@@ -110,7 +111,7 @@
   root.SimBase = {
     S, W, H, WEAPONS, PHYS, R, G, DRIVE_MAX,
     DRIVE_ACC, CLIMB, FUEL_COST, FALL_SAFE, FALL_DMG, WIND_ACC, RETREAT, MAX_HP,
-    SUDDEN_DEATH_ROUNDS, SUDDEN_DEATH_CAVES, WATER_RISE, BARREL_R, CRATE_R, CRATE_EVERY, CRATE_CHANCE, CRATE_HEAL,
+    SUDDEN_DEATH_ROUNDS, SUDDEN_DEATH_CAVES, WATER_RISE, WATER_RISE_CAVES, BARREL_R, CRATE_R, CRATE_EVERY, CRATE_CHANCE, CRATE_HEAL,
     RESUME_WAIT, FIRE_REACH, FIRE_LAND, FIRE_DMG, FIRE_MAX, FIRE_ROUNDS, FLAMES, C4_FUSE,
     SLIDE_THIN, SLIDE_SPAN_TH, SLIDE_CHUNK, SLIDE_MAX, GRAIN, SAVE_KEY, BOARD_KEY, BOOM,
     PT, BOT_SKILL, WMAP, rand, clamp, r1, gauss, shuffle,
