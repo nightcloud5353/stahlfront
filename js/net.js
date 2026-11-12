@@ -40,9 +40,12 @@
   function makeLink() { return { send() {}, onmessage: null, onclose: null, close() {} }; }
 
   // ---------- Gastgeber ----------
-  function host(cb) {
+  // opts.resume = gespeicherter Spielstand -> gleicher Raumcode, Spiel geht weiter
+  function host(cb, opts) {
     let tries = 0;
+    const resume = opts && opts.resume;
     const sim = new root.StahlSim();
+    if (resume) sim.restore(resume);
     const link = makeLink();
     let peer = null, code = null, destroyed = false;
 
@@ -56,9 +59,9 @@
     link.close = () => { destroyed = true; sim.destroy(); if (peer) peer.destroy(); };
 
     function attempt() {
-      code = randomCode();
+      code = resume ? resume.code : randomCode();
       peer = new root.Peer(S.PEER_PREFIX + code, peerOptions());
-      peer.on('open', () => { cb.onReady && cb.onReady(code, link); });
+      peer.on('open', () => { sim.code = code; cb.onReady && cb.onReady(code, link); });
       peer.on('connection', (dc) => {
         const conn = {
           send(m) { try { if (dc.open) dc.send(m); } catch (e) { /* weg */ } },
@@ -79,7 +82,11 @@
       });
       peer.on('disconnected', () => { if (!destroyed) setTimeout(() => { try { if (!peer.destroyed) peer.reconnect(); } catch (e) { /* egal */ } }, 1500); });
       peer.on('error', (e) => {
-        if (e.type === 'unavailable-id' && tries++ < 5) { peer.destroy(); attempt(); return; }
+        if (e.type === 'unavailable-id') {
+          // beim Fortsetzen ist der alte Raum evtl. noch kurz belegt -> mit demselben Code erneut versuchen
+          if (resume && tries++ < 15) { peer.destroy(); cb.onWarn && cb.onWarn('Raum ' + code + ' wird noch freigegeben …'); setTimeout(attempt, 2000); return; }
+          if (!resume && tries++ < 5) { peer.destroy(); attempt(); return; }
+        }
         if (e.type === 'peer-unavailable') return;
         if (!code || !peer.open) cb.onError && cb.onError(errText(e));
         else cb.onWarn && cb.onWarn(errText(e));

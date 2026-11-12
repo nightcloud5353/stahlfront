@@ -2,13 +2,9 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#1E2218">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Stahlfront">
 <title>Stahlfront</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -44,11 +40,18 @@
       <label for="name">Dein Name</label>
       <input id="name" maxlength="12" autocomplete="nickname" placeholder="z. B. Lena">
     </div>
+    <div id="resumeBox" class="resume hidden">
+      <div><b>Unterbrochenes Gefecht gefunden</b><br><span id="resumeInfo" class="hint"></span></div>
+      <div class="row">
+        <button id="btnResume" class="btn primary">FORTSETZEN</button>
+        <button id="btnDiscard" class="btn ghost small">VERWERFEN</button>
+      </div>
+    </div>
     <div class="menu-split">
       <div class="col">
         <div class="label">Neues Gefecht</div>
         <button id="btnHost" class="btn primary">SPIEL ERSTELLEN</button>
-        <p class="hint">Am besten auf dem Laptop – der Gastgeber muss die Seite offen lassen.</p>
+        <p class="hint">Der Gastgeber lässt die Seite offen. KI-Gegner kannst du in der Lobby hinzufügen.</p>
       </div>
       <div class="col">
         <label for="code">Raumcode</label>
@@ -72,7 +75,7 @@
         <div id="lobbyCode" class="bigcode">----</div>
       </div>
       <div class="lobby-share">
-        <button id="btnShare" class="btn small">EINLADEN</button>
+        <button id="btnShare" class="btn small">EINLADUNG KOPIEREN</button>
         <span class="hint">Mitspieler: Seite öffnen → Code eingeben</span>
       </div>
     </div>
@@ -80,6 +83,22 @@
       <div class="col grow">
         <div class="label" id="plCount">Spieler</div>
         <ul id="plist" class="plist"></ul>
+        <div id="botBox" class="col">
+          <div class="label">KI-Gegner hinzufügen</div>
+          <div class="seg" id="segBots"></div>
+        </div>
+        <div class="col look">
+          <div class="label">Dein Panzer</div>
+          <div class="look-row">
+            <canvas id="lookPrev" width="240" height="120"></canvas>
+            <div class="col grow">
+              <div class="label small">Tarnung</div>
+              <div class="chips" id="chipCamo"></div>
+              <div class="label small">Kommandant</div>
+              <div class="chips" id="chipHat"></div>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="col grow">
         <div id="settingsHost" class="col">
@@ -87,13 +106,19 @@
           <div class="seg" id="segTanks"></div>
           <div class="label">Zugzeit</div>
           <div class="seg" id="segTime"></div>
-          <div class="label">Karte</div>
+          <div class="label">Gelände</div>
+          <div class="seg" id="segMap"></div>
+          <div class="label">Optik</div>
           <div class="seg" id="segTheme"></div>
         </div>
         <p id="settingsView" class="hint"></p>
         <button id="btnStart" class="btn primary big">GEFECHT STARTEN</button>
         <p id="waitHost" class="hint">Warte, bis der Gastgeber startet …</p>
-        <p id="hostWarn" class="hint warn">Du bist Gastgeber: Lass diese Seite offen und den Bildschirm an, sonst bricht das Spiel für alle ab.</p>
+        <p id="hostWarn" class="hint warn">Du bist Gastgeber: Lass diese Seite offen. Bricht etwas ab, kannst du das Gefecht im Hauptmenü fortsetzen.</p>
+        <div class="col">
+          <div class="label">Bestenliste</div>
+          <table id="board" class="board"></table>
+        </div>
       </div>
     </div>
     <button id="btnLeave" class="btn ghost small">VERLASSEN</button>
@@ -109,11 +134,12 @@
     <div id="windBox" class="panel"><span>WIND</span><b id="windVal">0</b><div class="windbar"><div id="windFill"></div><div class="windmid"></div></div></div>
   </div>
   <div id="topright">
-    <button id="btnZoom" class="ibtn" aria-label="Übersicht"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 L21 21 M8 10.5 H13"/></svg></button>
-    <button id="btnSound" class="ibtn" aria-label="Ton an/aus"><svg viewBox="0 0 24 24"><path d="M4 9 H8 L13 5 V19 L8 15 H4 Z"/><path id="sndWaves" d="M16.5 9 Q19 12 16.5 15 M19 6.5 Q23.5 12 19 17.5"/></svg></button>
-    <button id="btnMenu" class="ibtn" aria-label="Menü"><svg viewBox="0 0 24 24"><path d="M4 6 H20 M4 12 H20 M4 18 H20"/></svg></button>
+    <button id="btnZoom" class="ibtn" aria-label="Übersicht" title="Übersicht (O)"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 L21 21 M8 10.5 H13"/></svg></button>
+    <button id="btnSound" class="ibtn" aria-label="Ton an/aus" title="Ton (M)"><svg viewBox="0 0 24 24"><path d="M4 9 H8 L13 5 V19 L8 15 H4 Z"/><path id="sndWaves" d="M16.5 9 Q19 12 16.5 15 M19 6.5 Q23.5 12 19 17.5"/></svg></button>
+    <button id="btnMenu" class="ibtn" aria-label="Menü" title="Menü (Esc)"><svg viewBox="0 0 24 24"><path d="M4 6 H20 M4 12 H20 M4 18 H20"/></svg></button>
   </div>
   <div id="banner"></div>
+  <div id="callout"></div>
   <div id="hint"></div>
   <div id="toasts"></div>
 
@@ -125,23 +151,23 @@
         <div class="fuel"><span>TREIBSTOFF</span><div class="bar"><div id="fuelFill"></div></div></div>
       </div>
       <div class="row">
-        <button class="cbtn drive" data-k="l" aria-label="Nach links fahren"><svg viewBox="0 0 24 24"><path d="M15 5 L8 12 L15 19"/></svg></button>
-        <button class="cbtn drive" data-k="r" aria-label="Nach rechts fahren"><svg viewBox="0 0 24 24"><path d="M9 5 L16 12 L9 19"/></svg></button>
+        <button class="cbtn drive" data-k="l" aria-label="Nach links fahren"><svg viewBox="0 0 24 24"><path d="M15 5 L8 12 L15 19"/></svg><kbd>A</kbd></button>
+        <button class="cbtn drive" data-k="r" aria-label="Nach rechts fahren"><svg viewBox="0 0 24 24"><path d="M9 5 L16 12 L9 19"/></svg><kbd>D</kbd></button>
       </div>
     </div>
     <div id="ctlRight">
       <div class="ctlcol">
         <span class="mini">WINKEL</span>
-        <button class="cbtn sm" data-k="u" aria-label="Rohr höher"><svg viewBox="0 0 24 24"><path d="M5 15 L12 8 L19 15"/></svg></button>
-        <button class="cbtn sm" data-k="d" aria-label="Rohr tiefer"><svg viewBox="0 0 24 24"><path d="M5 9 L12 16 L19 9"/></svg></button>
+        <button class="cbtn sm" data-k="u" aria-label="Rohr höher"><svg viewBox="0 0 24 24"><path d="M5 15 L12 8 L19 15"/></svg><kbd>W</kbd></button>
+        <button class="cbtn sm" data-k="d" aria-label="Rohr tiefer"><svg viewBox="0 0 24 24"><path d="M5 9 L12 16 L19 9"/></svg><kbd>S</kbd></button>
       </div>
       <div class="ctlcol">
         <span class="mini">KRAFT</span>
-        <button class="cbtn sm" data-k="pu" aria-label="Mehr Kraft"><svg viewBox="0 0 24 24"><path d="M12 5 V19 M5 12 H19"/></svg></button>
-        <button class="cbtn sm" data-k="pd" aria-label="Weniger Kraft"><svg viewBox="0 0 24 24"><path d="M5 12 H19"/></svg></button>
+        <button class="cbtn sm" data-k="pu" aria-label="Mehr Kraft"><svg viewBox="0 0 24 24"><path d="M12 5 V19 M5 12 H19"/></svg><kbd>E</kbd></button>
+        <button class="cbtn sm" data-k="pd" aria-label="Weniger Kraft"><svg viewBox="0 0 24 24"><path d="M5 12 H19"/></svg><kbd>Q</kbd></button>
       </div>
-      <button id="btnWeapon" class="cbtn weapon" aria-label="Munition wählen"><svg id="wIcon" viewBox="0 0 24 24"></svg><span id="wName">HE-GRANATE</span><i id="wAmmo"></i></button>
-      <button id="btnFire" class="cbtn fire" data-k="fire">FEUER</button>
+      <button id="btnWeapon" class="cbtn weapon" aria-label="Munition wählen"><svg id="wIcon" viewBox="0 0 24 24"></svg><span id="wName">HE-GRANATE</span><i id="wAmmo"></i><kbd>Tab</kbd></button>
+      <button id="btnFire" class="cbtn fire" data-k="fire">FEUER<kbd>Leertaste</kbd></button>
     </div>
   </div>
 
@@ -167,10 +193,19 @@
   </div>
 
   <div id="over" class="overlay hidden">
-    <div class="card">
+    <div class="card wide">
       <div class="label">GEFECHT BEENDET</div>
       <h1 id="overTitle" class="logo">SIEG</h1>
-      <ol id="rankList" class="rank"></ol>
+      <div class="over-body">
+        <div class="col grow">
+          <div class="label">Platzierung</div>
+          <table id="rankList" class="rank"></table>
+        </div>
+        <div class="col grow">
+          <div class="label">Auszeichnungen</div>
+          <ul id="awards" class="awards"></ul>
+        </div>
+      </div>
       <div class="row">
         <button id="btnRematch" class="btn primary big">REVANCHE</button>
         <button id="btnToLobby" class="btn">ZUR LOBBY</button>
@@ -192,30 +227,30 @@
           <li>Nach dem Schuss bleiben 2,5 s, um mit dem restlichen Treibstoff in Deckung zu fahren.</li>
           <li>Wer Schaden nimmt, während er dran ist, beendet seinen Zug sofort.</li>
           <li>Ins Wasser fallen = Panzer verloren. Ab Runde 7 steigt das Wasser.</li>
+          <li>Beton (grau) hält viel aus – nur der Bunkerbrecher kommt gut durch.</li>
           <li>Wer zuletzt noch Panzer hat, gewinnt.</li>
         </ul>
         <h3>Tipps</h3>
         <ul>
           <li>Winkel und Kraft bleiben pro Panzer gespeichert – nachjustieren statt raten.</li>
           <li>Die gestrichelte Linie zeigt den Anfang der Flugbahn <b>ohne</b> Wind.</li>
-          <li>Wind (oben) treibt Granaten nach links (−) oder rechts (+).</li>
+          <li>Wind (oben) treibt Granaten nach links (◀) oder rechts (▶).</li>
         </ul>
       </div>
       <div>
-        <h3>Handy</h3>
+        <h3>Maus</h3>
         <ul>
-          <li><b>◀ ▶</b> fahren (kostet Treibstoff)</li>
-          <li><b>WINKEL ▲▼</b> und <b>KRAFT + −</b>: kurz tippen = 1 Schritt, halten = schnell</li>
-          <li><b>Munition</b>-Knopf öffnet die Auswahl, <b>FEUER</b> schießt</li>
-          <li>Artillerie: Ziel auf der Karte antippen</li>
-          <li>Wischen = Karte verschieben, zwei Finger = Zoom, Lupe = Übersicht</li>
+          <li><b>Am eigenen Panzer ziehen</b> = zielen: Richtung = Winkel, Länge = Kraft</li>
+          <li><b>Klick</b> auf die Karte = Ziel (Artillerie)</li>
+          <li><b>Ziehen</b> auf der Karte = verschieben · <b>Mausrad</b> = Zoom</li>
+          <li><b>Doppelklick</b> auf eigenen Panzer = Panzer wechseln (vor dem Fahren)</li>
         </ul>
         <h3>Tastatur</h3>
         <ul>
-          <li><b>← →</b> / <b>A D</b> fahren · <b>↑ ↓</b> / <b>W S</b> Winkel</li>
-          <li><b>Q E</b> / <b>− +</b> Kraft · <b>Leertaste</b> Feuer</li>
-          <li><b>1–0</b> Munition · <b>Tab</b> Munitionsmenü · <b>O</b> Übersicht</li>
-          <li>Klick = Ziel (Artillerie) · Mausrad = Zoom</li>
+          <li><b>A D</b> / <b>← →</b> fahren</li>
+          <li><b>W S</b> / <b>↑ ↓</b> Winkel · <b>E Q</b> / <b>+ −</b> Kraft (halten = schnell)</li>
+          <li><b>Leertaste</b> Feuer · <b>Tab</b> Munition · <b>1–0</b> Munition direkt</li>
+          <li><b>P</b> Panzer wechseln · <b>O</b> Übersicht · <b>M</b> Ton · <b>Esc</b> Menü</li>
         </ul>
       </div>
     </div>
@@ -227,18 +262,17 @@
     <h2>VERBINDUNG UNTERBROCHEN</h2>
     <p id="connText" class="sub"></p>
     <div class="col">
-      <button id="btnReconnect" class="btn primary">NEU VERBINDEN</button>
+      <button id="btnReconnect" class="btn primary">JETZT NEU VERBINDEN</button>
       <button id="btnConnMenu" class="btn ghost">ZUM HAUPTMENÜ</button>
     </div>
   </div>
 </section>
 
-<div id="rotate">Bitte das Handy quer halten</div>
-
 <script src="js/peerjs.min.js"></script>
 <script src="js/shared.js"></script>
 <script src="js/sim.js"></script>
 <script src="js/net.js"></script>
+<script src="js/sound.js"></script>
 <script src="js/game.js"></script>
 </body>
 </html>
