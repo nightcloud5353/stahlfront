@@ -19,9 +19,10 @@ Bricht beim Gastgeber etwas ab (Tab zu, Absturz), auf der Seite im Hauptmenü **
 | Problem | Lösung |
 |---|---|
 | „Kein Spiel mit diesem Code gefunden“ | Code prüfen; ist die Seite beim Gastgeber noch offen? |
-| Verbindung bricht ab | Seite neu laden → Beitreten – man landet wieder im selben Spiel |
-| Gastgeber-Handy geht in Standby | Spiel bricht ab → Laptop als Gastgeber nehmen |
-| Kein Vollbild auf dem iPhone | Safari → Teilen → „Zum Home-Bildschirm“, dann von dort starten |
+| Verbindung bricht ab | Das Spiel verbindet sich alle 3 s selbst neu; notfalls Seite neu laden → Beitreten |
+| Gastgeber-Tab geschlossen / abgestürzt | Gastgeber: Seite öffnen → **FORTSETZEN** |
+| Laptop geht in den Ruhemodus | Netzteil anschließen, Energiesparen aus |
+| Niemand kann beitreten | Sind alle im iPhone-Hotspot und hat das iPhone mobile Daten? |
 
 ## Steuerung
 
