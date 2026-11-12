@@ -33,10 +33,16 @@
 
 <!-- Hauptmenü -->
 <section id="menu" class="screen hidden">
-  <div class="card">
-    <h1 class="logo">STAHLFRONT</h1>
-    <p class="sub">Rundenbasiertes Panzer-Artillerie-Gefecht für 2–6 Spieler</p>
-    <div class="col">
+  <div class="card menu2">
+    <div class="corner">
+      <button id="btnMusic2" class="ibtn txt" title="Musik an/aus (N)"><svg viewBox="0 0 24 24"><path d="M9 18 V6 L19 4 V16"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg><span>MUSIK</span></button>
+      <button id="btnHelp" class="ibtn txt" title="Steuerung &amp; Regeln"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5 Q9.5 7 12 7 Q14.5 7 14.5 9.5 Q14.5 11 12 12 V13.5 M12 16.5 V17"/></svg><span>HILFE</span></button>
+    </div>
+    <div>
+      <h1 class="logo">STAHLFRONT</h1>
+      <p class="sub tagline">Rundenbasiertes Panzer-Artillerie-Gefecht für 2–6 Spieler</p>
+    </div>
+    <div class="namerow">
       <label for="name">Dein Name</label>
       <input id="name" maxlength="12" autocomplete="nickname" placeholder="z. B. Lena">
     </div>
@@ -47,93 +53,98 @@
         <button id="btnDiscard" class="btn ghost small">VERWERFEN</button>
       </div>
     </div>
-    <div class="menu-split">
-      <div class="col">
-        <div class="label">Neues Gefecht</div>
-        <button id="btnHost" class="btn primary">SPIEL ERSTELLEN</button>
-        <p class="hint">Der Gastgeber lässt die Seite offen. KI-Gegner kannst du in der Lobby hinzufügen.</p>
+    <div class="ways">
+      <div class="way" id="wayHost">
+        <h3>Neues Gefecht</h3>
+        <p>Du bist Gastgeber: Raum erstellen, Freunde einladen, KI-Gegner dazunehmen.</p>
+        <div class="grow-space"></div>
+        <button id="btnHost" class="btn primary big">SPIEL ERSTELLEN</button>
       </div>
-      <div class="col">
-        <label for="code">Raumcode</label>
+      <div class="way" id="wayJoin">
+        <span class="badge" id="joinBadge">EINLADUNG ERHALTEN</span>
+        <h3>Beitreten</h3>
+        <p>Raumcode vom Gastgeber eingeben.</p>
+        <div class="grow-space"></div>
         <div class="row">
-          <input id="code" maxlength="4" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="ABCD" class="code-in">
-          <button id="btnJoin" class="btn">BEITRETEN</button>
+          <input id="code" maxlength="4" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="ABCD" class="code-in" aria-label="Raumcode">
+          <button id="btnJoin" class="btn big">BEITRETEN</button>
         </div>
       </div>
     </div>
     <p id="menuStatus" class="status"></p>
-    <button id="btnHelp" class="btn ghost small">STEUERUNG &amp; REGELN</button>
-    <button id="btnMusic2" class="btn ghost small">MUSIK: AN</button>
-    <p class="hint version">Version 1.16 · Schöneres Gelände</p>
+    <div class="foot"><span class="version">Version 1.17 · Neue Oberfläche</span></div>
   </div>
 </section>
 
 <!-- Lobby -->
 <section id="lobby" class="screen hidden">
-  <div class="card wide">
-    <div class="lobby-head">
-      <div>
-        <div class="label">Raumcode</div>
-        <div id="lobbyCode" class="bigcode">----</div>
-      </div>
-      <div class="lobby-share">
-        <button id="btnShare" class="btn small">EINLADUNG KOPIEREN</button>
-        <span class="hint">Mitspieler: Seite öffnen → Code eingeben</span>
-      </div>
+  <div class="card lobby2">
+    <div class="l2-head">
+      <h2>LOBBY</h2>
+      <div class="grow"></div>
+      <div id="hostWarn" class="warnline">⚑ Du bist Gastgeber – lass diese Seite offen.</div>
+      <button id="btnLeave" class="btn ghost small">VERLASSEN</button>
     </div>
-    <div class="lobby-body">
-      <div class="col grow">
-        <div class="label" id="plCount">Spieler</div>
-        <ul id="plist" class="plist"></ul>
+    <div class="l2-cols">
+      <div class="l2-col">
+        <h3>Teilnehmer <small id="plCount">0 / 6</small></h3>
+        <ul id="plist" class="plist2"></ul>
         <div id="botBox" class="col">
-          <div class="label">KI-Gegner hinzufügen</div>
-          <div class="seg" id="segBots"></div>
-        </div>
-        <div class="col look">
-          <div class="label">Dein Panzer</div>
-          <div class="look-row">
-            <canvas id="lookPrev" width="240" height="120"></canvas>
-            <div class="col grow">
-              <div class="label small">Tarnung</div>
-              <div class="chips" id="chipCamo"></div>
-              <div class="label small">Kommandant</div>
-              <div class="chips" id="chipHat"></div>
-            </div>
-          </div>
+          <h3>KI-Gegner hinzufügen</h3>
+          <div class="addbot" id="segBots"></div>
         </div>
       </div>
-      <div class="col grow">
-        <div id="settingsHost" class="col">
-          <div class="label">Panzer pro Spieler</div>
-          <div class="seg" id="segTanks"></div>
+      <div class="l2-col" id="settingsHost">
+        <h3>Gefecht <small id="settingsRO">nur der Gastgeber kann ändern</small></h3>
+        <div class="setting">
+          <div class="label">Gelände</div>
+          <div class="maps" id="segMap"></div>
+          <p class="help" id="mapHelp"></p>
+        </div>
+        <div class="setting">
           <div class="label">Zugzeit</div>
           <div class="seg" id="segTime"></div>
-          <div class="label">Gelände</div>
-          <div class="seg" id="segMap"></div>
+          <p class="help" id="timeHelp"></p>
+        </div>
+        <div class="setting">
+          <div class="label">Panzer pro Spieler</div>
+          <div class="seg" id="segTanks"></div>
+        </div>
+        <div class="setting">
           <div class="label">Optik</div>
           <div class="seg" id="segTheme"></div>
         </div>
-        <p id="settingsView" class="hint"></p>
-        <button id="btnStart" class="btn primary big">GEFECHT STARTEN</button>
-        <p id="waitHost" class="hint">Warte, bis der Gastgeber startet …</p>
-        <p id="hostWarn" class="hint warn">Du bist Gastgeber: Lass diese Seite offen. Bricht etwas ab, kannst du das Gefecht im Hauptmenü fortsetzen.</p>
-        <div class="col">
-          <div class="label">Bestenliste</div>
-          <table id="board" class="board"></table>
+      </div>
+      <div class="l2-col">
+        <h3>Dein Panzer</h3>
+        <div class="look2">
+          <canvas id="lookPrev" width="480" height="240"></canvas>
+          <div class="label small">Tarnung</div>
+          <div class="chips" id="chipCamo"></div>
+          <div class="label small">Kommandant</div>
+          <div class="chips" id="chipHat"></div>
         </div>
+        <details class="collapse" id="boardBox"><summary id="boardSum">Bestenliste</summary><table id="board" class="board"></table></details>
       </div>
     </div>
-    <button id="btnLeave" class="btn ghost small">VERLASSEN</button>
+    <div class="l2-foot">
+      <div class="code"><div class="label">Raumcode</div><div id="lobbyCode" class="bigcode">----</div></div>
+      <div class="share"><button id="btnShare" class="btn small">EINLADUNG KOPIEREN</button><span class="hint">Link an Mitspieler schicken</span></div>
+      <div class="sum" id="lobbySum"></div>
+      <button id="btnStart" class="btn primary big">GEFECHT STARTEN</button>
+      <p id="waitHost" class="waithost">Warte, bis der Gastgeber startet …</p>
+    </div>
   </div>
 </section>
 
 <!-- Spiel-HUD -->
 <section id="hud" class="hidden">
+  <div id="turnFrame"></div>
   <div id="teams" class="panel"></div>
   <div id="topbar">
-    <div id="turnInfo" class="panel">–</div>
+    <div id="turnInfo" class="panel"><small id="turnSub"></small><span id="turnWho">–</span></div>
     <div id="timer">--</div>
-    <div id="windBox" class="panel"><span>WIND</span><b id="windVal">0</b><div class="windbar"><div id="windFill"></div><div class="windmid"></div></div></div>
+    <div id="windBox" class="panel" title="Wind"><span class="lbl">WIND</span><span id="windArrows" class="arrows"></span><b id="windVal">0</b></div>
   </div>
   <div id="topright">
     <button id="btnZoom" class="ibtn" aria-label="Übersicht" title="Übersicht (O)"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 L21 21 M8 10.5 H13"/></svg></button>
@@ -152,18 +163,22 @@
         <div><span>KRAFT</span><b id="roPow">55</b></div>
         <div class="fuel"><span>TREIBSTOFF</span><div class="bar"><div id="fuelFill"></div></div></div>
       </div>
-      <div class="row">
+      <div id="keyhint" class="keys">
+        <span><kbd>A</kbd><kbd>D</kbd>fahren</span><span><kbd>W</kbd><kbd>S</kbd>Winkel</span><span><kbd>E</kbd><kbd>Q</kbd>Kraft</span><span><kbd>R</kbd>Seilwinde</span><span>oder am Panzer ziehen</span>
+      </div>
+      <button id="btnPad" class="btn ghost small padtoggle">BILDSCHIRM-KNÖPFE ZEIGEN</button>
+      <div class="row pad">
         <button class="cbtn drive" data-k="l" aria-label="Nach links fahren"><svg viewBox="0 0 24 24"><path d="M15 5 L8 12 L15 19"/></svg><kbd>A</kbd></button>
         <button class="cbtn drive" data-k="r" aria-label="Nach rechts fahren"><svg viewBox="0 0 24 24"><path d="M9 5 L16 12 L9 19"/></svg><kbd>D</kbd></button>
       </div>
     </div>
     <div id="ctlRight">
-      <div class="ctlcol">
+      <div class="ctlcol pad">
         <span class="mini">WINKEL</span>
         <button class="cbtn sm" data-k="u" aria-label="Rohr höher"><svg viewBox="0 0 24 24"><path d="M5 15 L12 8 L19 15"/></svg><kbd>W</kbd></button>
         <button class="cbtn sm" data-k="d" aria-label="Rohr tiefer"><svg viewBox="0 0 24 24"><path d="M5 9 L12 16 L19 9"/></svg><kbd>S</kbd></button>
       </div>
-      <div class="ctlcol">
+      <div class="ctlcol pad">
         <span class="mini">KRAFT</span>
         <button class="cbtn sm" data-k="pu" aria-label="Mehr Kraft"><svg viewBox="0 0 24 24"><path d="M12 5 V19 M5 12 H19"/></svg><kbd>E</kbd></button>
         <button class="cbtn sm" data-k="pd" aria-label="Weniger Kraft"><svg viewBox="0 0 24 24"><path d="M5 12 H19"/></svg><kbd>Q</kbd></button>
@@ -271,6 +286,29 @@
     </div>
   </div>
 </section>
+
+<section id="connecting" class="overlay hidden">
+  <div class="card connect2">
+    <h2 id="cnTitle">VERBINDE …</h2>
+    <ul class="steps">
+      <li id="cnRelay"><span class="dot"></span><span>Internet-Server</span></li>
+      <li id="cnDirect"><span class="dot"></span><span>Direktverbindung (falls nötig)</span></li>
+    </ul>
+    <div class="progress"><div id="cnProg"></div></div>
+    <p id="cnHint" class="hint"></p>
+    <button id="btnCnCancel" class="btn ghost">ABBRECHEN</button>
+  </div>
+</section>
+
+<section id="dlg" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="dlgTitle">
+  <div class="card dialog">
+    <h2 id="dlgTitle"></h2>
+    <p id="dlgText"></p>
+    <div class="row"><button id="dlgNo" class="btn ghost">ABBRECHEN</button><button id="dlgYes" class="btn danger solid">OK</button></div>
+  </div>
+</section>
+
+<div id="rotate">Bitte das Gerät quer halten ↻</div>
 
 <script src="js/peerjs.min.js"></script>
 <script src="js/shared.js"></script>

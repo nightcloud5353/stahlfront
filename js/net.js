@@ -162,6 +162,7 @@
     };
     const startDirect = () => {
       if (dj || settled || q.has('noDirect')) return;
+      if (cb.onStep) cb.onStep('direct');
       dj = directJoin(code, { onReady: win, onError: (m) => { directErr = m; if (relayErr) lose(m); else setTimeout(() => lose(m), 3000); } });
     };
     rj = root.RELAY.join(code, {
@@ -170,7 +171,14 @@
     });
     const t1 = setTimeout(startDirect, 6000);
     const t2 = setTimeout(() => lose('Kein Spiel mit diesem Code erreichbar. Code richtig? Ist die Seite beim Gastgeber noch offen?'), 22000);
-    return { code };
+    // Abbrechen (Knopf in der Verbindungsanzeige): alle Versuche beenden, keine Rückmeldung mehr
+    const cancel = () => {
+      if (settled) return;
+      settled = true; stop();
+      if (rj) rj.cancel();
+      if (dj) dj.cancel();
+    };
+    return { code, cancel };
   }
 
   root.NET = { host, join, normCode };

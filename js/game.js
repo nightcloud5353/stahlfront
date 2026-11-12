@@ -100,7 +100,9 @@
   function setMusic(on) {
     musicOn = on; store.set('sf_music', on ? '1' : '0');
     SND.setMusic(on);
-    for (const id of ['btnMusic', 'btnMusic2']) $(id).textContent = on ? 'MUSIK: AN' : 'MUSIK: AUS';
+    $('btnMusic').textContent = on ? 'MUSIK: AN' : 'MUSIK: AUS';
+    $('btnMusic2').classList.toggle('off', !on);
+    $('btnMusic2').title = on ? 'Musik ausschalten (N)' : 'Musik einschalten (N)';
   }
   function setMuted(m) {
     muted = m; store.set('sf_mute', m ? '1' : '0');
@@ -108,6 +110,55 @@
     $('btnSound').classList.toggle('off', m);
     $('sndWaves').style.display = m ? 'none' : '';
   }
+
+  // ---------- Rückfragen im Spielstil (statt confirm) ----------
+  let dlgDone = null;
+  function ask(title, text, yes, danger) {
+    if (dlgDone) dlgDone(false);
+    $('dlgTitle').textContent = title;
+    $('dlgText').textContent = text;
+    $('dlgYes').textContent = yes || 'OK';
+    $('dlg').querySelector('.dialog').classList.toggle('danger', danger !== false);
+    $('dlg').classList.remove('hidden');
+    setTimeout(() => $('dlgNo').focus(), 0);
+    return new Promise((resolve) => {
+      dlgDone = (v) => { dlgDone = null; $('dlg').classList.add('hidden'); resolve(v); };
+    });
+  }
+  $('dlgYes').addEventListener('click', () => { if (dlgDone) dlgDone(true); });
+  $('dlgNo').addEventListener('click', () => { if (dlgDone) dlgDone(false); });
+  $('dlg').addEventListener('click', (e) => { if (e.target === $('dlg') && dlgDone) dlgDone(false); });
+  window.addEventListener('keydown', (e) => {
+    if (!dlgDone) return;
+    if (e.code === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); dlgDone(false); }
+  }, true);
+
+  // ---------- Verbindungsanzeige (Spiel erstellen / beitreten) ----------
+  const CONN_MAX = 22000; // so lange versucht NET.join höchstens
+  let cn = null;
+  function connShow(title, hint, onCancel) {
+    connHide();
+    cn = { t0: performance.now(), onCancel, timer: 0 };
+    $('cnTitle').textContent = title;
+    $('cnHint').textContent = hint;
+    $('cnRelay').className = 'act'; $('cnDirect').className = '';
+    $('cnProg').style.width = '0%';
+    $('connecting').classList.remove('hidden');
+    const tick = () => { if (!cn) return; $('cnProg').style.width = Math.min(96, ((performance.now() - cn.t0) / CONN_MAX) * 100) + '%'; };
+    cn.timer = setInterval(tick, 250); tick();
+  }
+  function connStep(step) {
+    if (!cn) return;
+    if (step === 'direct') $('cnDirect').className = 'act';
+  }
+  function connHide(ok) {
+    if (!cn) return;
+    clearInterval(cn.timer);
+    if (ok) { $('cnRelay').className = 'done'; $('cnProg').style.width = '100%'; }
+    cn = null;
+    $('connecting').classList.add('hidden');
+  }
+  $('btnCnCancel').addEventListener('click', () => { const c = cn; connHide(); if (c && c.onCancel) c.onCancel(); });
 
   // ---------- Passwort ----------
   async function sha(s) {
@@ -170,11 +221,13 @@
   function toMenu(status) {
     G = null; lobby = null; overInfo = null;
     stopReconnect();
+    connHide();
     show('menu');
     $('menuStatus').textContent = status || '';
     $('btnHost').disabled = false; $('btnJoin').disabled = false; $('btnResume').disabled = false;
     const sv = window.StahlSim.loadSave();
     $('resumeBox').classList.toggle('hidden', !sv);
+    $('wayJoin').classList.toggle('hl', NET.normCode($('code').value).length === 4);
     if (sv) {
       const min = Math.max(1, Math.round((Date.now() - sv.at) / 60000));
       const names = sv.players.filter((p) => !p.spec).map((p) => p.name).join(', ');
@@ -184,7 +237,7 @@
   $('name').value = store.get('sf_name') || '';
   const hashCode = NET.normCode(location.hash.slice(1));
   if (hashCode.length === 4) $('code').value = hashCode;
-  $('code').addEventListener('input', () => { $('code').value = NET.normCode($('code').value); });
+  $('code').addEventListener('input', () => { $('code').value = NET.normCode($('code').value); $('wayJoin').classList.toggle('hl', $('code').value.length === 4); });
   function myName() {
     const n = $('name').value.trim().slice(0, 12);
     if (!n) { $('menuStatus').textContent = 'Bitte zuerst einen Namen eingeben.'; $('name').focus(); return null; }
@@ -194,38 +247,55 @@
   function startHost(resume) {
     SND.unlock();
     const n = resume ? (store.get('sf_name') || 'Gastgeber') : myName(); if (!n) return;
-    $('menuStatus').textContent = resume ? `Öffne Raum ${resume.code} wieder …` : 'Erstelle Raum …';
+    $('menuStatus').textContent = '';
     $('btnHost').disabled = true; $('btnJoin').disabled = true; $('btnResume').disabled = true;
+    let cancelled = false;
+    connShow(resume ? `ÖFFNE RAUM ${resume.code}` : 'ERSTELLE RAUM', 'Dauert meist nur wenige Sekunden.', () => {
+      cancelled = true;
+      if (hostHandle) { try { hostHandle.link.close(); } catch (e) { /* egal */ } hostHandle = null; }
+      toMenu();
+    });
     hostHandle = NET.host({
       onReady(code, l) {
+        if (cancelled) return;
+        connHide(true);
         roomCode = code; amHost = true; attach(l);
         history.replaceState(null, '', '#' + code);
         link.send({ t: 'join', name: n, look: myLook, token: store.get('sf_tok_' + code) || undefined });
         if (resume) toast('Gefecht fortgesetzt – warte auf die Mitspieler', 'warn');
       },
-      onError(msg) { if (hostHandle) hostHandle.link.close(); hostHandle = null; toMenu(msg); },
+      onError(msg) { if (cancelled) return; connHide(); if (hostHandle) hostHandle.link.close(); hostHandle = null; toMenu(msg); },
       onWarn(msg) { if (G) toast(msg, 'warn'); else $('menuStatus').textContent = msg; },
     }, resume ? { resume } : null);
   }
-  $('btnHost').addEventListener('click', () => {
-    if (window.StahlSim.loadSave() && !confirm('Es gibt ein unterbrochenes Gefecht. Ein neues Spiel verwirft es. Trotzdem neu starten?')) return;
+  $('btnHost').addEventListener('click', async () => {
+    if (window.StahlSim.loadSave() && !(await ask('NEUES GEFECHT?', 'Es gibt ein unterbrochenes Gefecht. Ein neues Spiel verwirft es.', 'NEU STARTEN'))) return;
     window.StahlSim.clearSave();
     startHost(null);
   });
   $('btnResume').addEventListener('click', () => { const sv = window.StahlSim.loadSave(); if (sv) startHost(sv); else toMenu('Kein Spielstand gefunden.'); });
-  $('btnDiscard').addEventListener('click', () => { if (confirm('Unterbrochenes Gefecht wirklich verwerfen?')) { window.StahlSim.clearSave(); toMenu(); } });
+  $('btnDiscard').addEventListener('click', async () => { if (await ask('GEFECHT VERWERFEN?', 'Das unterbrochene Gefecht kann danach nicht mehr fortgesetzt werden.', 'VERWERFEN')) { window.StahlSim.clearSave(); toMenu(); } });
 
   function doJoin(code, name) {
-    if (!reconnect.active) { $('menuStatus').textContent = 'Verbinde mit ' + code + ' …'; $('btnHost').disabled = true; $('btnJoin').disabled = true; }
-    NET.join(code, {
+    let cancelled = false, jh = null;
+    if (!reconnect.active) {
+      $('menuStatus').textContent = ''; $('btnHost').disabled = true; $('btnJoin').disabled = true;
+      connShow('VERBINDE MIT ' + code, 'Dauert meist unter 5 Sekunden. Ist die Seite beim Gastgeber offen?', () => { cancelled = true; if (jh && jh.cancel) jh.cancel(); toMenu(); });
+    }
+    jh = NET.join(code, {
+      onStep(step) { if (!cancelled) connStep(step); },
       onReady(c, l) {
+        if (cancelled) { try { l.close(); } catch (e) { /* egal */ } return; }
+        connHide(true);
         roomCode = c; amHost = false; attach(l);
         history.replaceState(null, '', '#' + c);
         stopReconnect();
         link.send({ t: 'join', name, look: myLook, token: store.get('sf_tok_' + c) || undefined });
       },
       onError(msg) {
+        if (cancelled) return;
         if (reconnect.active) { scheduleReconnect(msg); return; }
+        connHide();
         toMenu(msg);
       },
     });
@@ -330,6 +400,46 @@
       el.appendChild(b);
     }
   }
+  // Kleine Vorschaubilder der Geländeformen (einmal erzeugt, mit der echten Gelände-Erzeugung)
+  const mapThumbs = {};
+  const THUMB_THEME = { huegel: 0, inseln: 1, bruecken: 2, hoehlen: 3 };
+  function mapThumb(id) {
+    if (mapThumbs[id] !== undefined) return mapThumbs[id];
+    let url = '';
+    try {
+      const sim = new window.StahlSim(); sim.destroy();
+      sim.g = { map: id, waterY: H - 62, objs: [], tanks: [], slides: [] };
+      sim.genTerrain(id);
+      const tw = 200, th = 90, sc = W / tw, oy = 40;
+      const cv = document.createElement('canvas'); cv.width = tw; cv.height = th;
+      const x = cv.getContext('2d'), img = x.createImageData(tw, th), d = img.data;
+      const T = THEMES[THUMB_THEME[id] || 0], hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+      const s1 = hex(T.sky1), s2 = hex(T.sky2), wa = hex(T.water), cave = T.d2.map((v) => v * 0.45);
+      // erste dicke Erdschicht je Spalte (schwebende Felsen zählen nicht): Luft darunter ist Höhle, nicht Himmel
+      const top = new Int32Array(tw);
+      for (let px = 0; px < tw; px++) { let y = 0; const mx = Math.floor(px * sc); while (y < H - 30 && !(sim.mask[y * W + mx] === 1 && sim.mask[(y + 15) * W + mx] && sim.mask[(y + 30) * W + mx])) y++; top[px] = y; }
+      for (let py = 0; py < th; py++) {
+        const wy = Math.floor(oy + py * sc * 0.96);
+        for (let px = 0; px < tw; px++) {
+          const v = sim.mask[Math.min(H - 1, wy) * W + Math.floor(px * sc)], o = (py * tw + px) * 4;
+          const above = wy - Math.round(sc) >= 0 ? sim.mask[(wy - Math.round(sc)) * W + Math.floor(px * sc)] : 0;
+          let c;
+          if (v === 2) c = [150, 152, 156];
+          else if (v === 1) c = above ? T.d1 : T.top1;
+          else if (wy > top[px]) c = cave;
+          else if (wy > H - 62) c = wa;
+          else { const k = py / th; c = [lerp(s1[0], s2[0], k), lerp(s1[1], s2[1], k), lerp(s1[2], s2[2], k)]; }
+          d[o] = c[0]; d[o + 1] = c[1]; d[o + 2] = c[2]; d[o + 3] = 255;
+        }
+      }
+      x.putImageData(img, 0, 0);
+      url = cv.toDataURL();
+    } catch (e) { url = ''; }
+    mapThumbs[id] = url;
+    return url;
+  }
+  const TIME_HELP = { 0: '„Ohne“ = Übungsmodus ohne Zeitlimit.', 20: '20 Sekunden pro Zug – schnell und hektisch.', 30: '30 Sekunden pro Zug.', 45: '45 Sekunden pro Zug – Zeit zum Zielen.', 60: '60 Sekunden pro Zug – ganz entspannt.' };
+  const BOT_HELP = { 1: 'LEICHT', 2: 'MITTEL', 3: 'SCHWER' };
   function renderLobby() {
     if (!lobby) return;
     const host = lobby.host === myId;
@@ -337,14 +447,13 @@
     $('lobbyCode').textContent = roomCode || '----';
     const pl = $('plist'); pl.innerHTML = '';
     const active = lobby.players.filter((p) => !p.spec);
-    $('plCount').textContent = `Teilnehmer ${active.length} / ${S.MAX_PLAYERS}`;
+    $('plCount').textContent = `${active.length} / ${S.MAX_PLAYERS}`;
     for (const p of lobby.players) {
       const li = document.createElement('li');
       if (!p.connected) li.classList.add('off');
-      const sw = document.createElement('span'); sw.className = 'sw';
-      sw.style.background = p.spec ? '#555' : S.TEAM_COLORS[p.color];
-      li.appendChild(sw);
-      const nm = document.createElement('span'); nm.textContent = p.name; li.appendChild(nm);
+      const bar = document.createElement('span'); bar.className = 'bar';
+      bar.style.background = p.spec ? '#555' : S.TEAM_COLORS[p.color];
+      li.appendChild(bar);
       const tags = [];
       if (p.id === lobby.host) tags.push(['GASTGEBER', 'host']);
       if (p.id === myId) tags.push(['DU', '']);
@@ -352,30 +461,58 @@
       if (p.spec) tags.push(['ZUSCHAUER', '']);
       if (!p.connected) tags.push(['OFFLINE', '']);
       if (p.look && CAMO[p.look.camo] && !p.spec) tags.push([CAMO[p.look.camo].name.toUpperCase(), '']);
-      for (const [tx, cl] of tags) { const tg = document.createElement('span'); tg.className = 'tag ' + cl; tg.textContent = tx; li.appendChild(tg); }
+      const nm = document.createElement('span'); nm.className = 'nm';
+      nm.innerHTML = `<span>${esc(p.name)}</span><small>${tags.map(([tx, cl]) => `<span class="${cl}">${esc(tx)}</span>`).join(' · ')}</small>`;
+      li.appendChild(nm);
       if (host && p.id !== myId && lobby.phase === 'lobby') {
         const k = document.createElement('button'); k.className = 'kick'; k.textContent = '✕'; k.title = 'Entfernen'; k.setAttribute('aria-label', p.name + ' entfernen');
         k.addEventListener('click', () => send({ t: 'kick', id: p.id }));
         li.appendChild(k);
-      }
+      } else li.appendChild(document.createElement('span'));
+      pl.appendChild(li);
+    }
+    const free = S.MAX_PLAYERS - active.length;
+    if (free > 0) {
+      const li = document.createElement('li'); li.className = 'empty';
+      li.textContent = free === 1 ? 'Noch 1 Platz frei – Einladung unten kopieren' : `Noch ${free} Plätze frei – Einladung unten kopieren`;
       pl.appendChild(li);
     }
     const st = lobby.settings;
-    $('settingsHost').classList.toggle('hidden', !host);
+    $('settingsHost').classList.toggle('ro', !host);
     $('botBox').classList.toggle('hidden', !host || active.length >= S.MAX_PLAYERS);
     $('btnStart').classList.toggle('hidden', !host);
     $('waitHost').classList.toggle('hidden', host);
     $('hostWarn').classList.toggle('hidden', !host);
-    const themeName = st.theme < 0 ? 'Zufall' : THEMES[st.theme].name;
-    const mapName = st.map === 'random' ? 'Zufall' : (S.MAPS.find((x) => x.id === st.map) || {}).name;
-    $('settingsView').textContent = host ? '' : `${st.tanks} Panzer pro Spieler · ${st.turnTime ? st.turnTime + ' s Zugzeit' : 'ohne Zeitlimit'} · Gelände: ${mapName} · Optik: ${themeName}`;
+    const themeName = st.theme < 0 ? 'zufällig' : THEMES[st.theme].name;
+    const mapInfo = S.MAPS.find((x) => x.id === st.map);
+    const mapName = st.map === 'random' ? 'Zufälliges Gelände' : mapInfo ? mapInfo.name : '';
+    $('lobbySum').innerHTML = `<b>${esc(mapName)}</b> · ${st.tanks} Panzer pro Spieler · ${st.turnTime ? st.turnTime + ' s Zugzeit' : 'ohne Zeitlimit'} · Optik ${esc(themeName)}`;
+    $('mapHelp').textContent = st.map === 'random' ? 'Jedes Gefecht ein anderes Gelände.' : mapInfo ? mapInfo.info : '';
+    $('timeHelp').textContent = TIME_HELP[st.turnTime] || '';
+    const upd = (patch) => { if (host) send(Object.assign({ t: 'settings' }, st, patch)); };
+    seg($('segTanks'), [[1, '1'], [2, '2'], [3, '3'], [4, '4']], st.tanks, (v) => upd({ tanks: v }));
+    seg($('segTime'), [[20, '20 s'], [30, '30 s'], [45, '45 s'], [60, '60 s'], [0, 'Ohne', 'Ohne Zeitlimit – zum Üben']], st.turnTime, (v) => upd({ turnTime: v }));
+    seg($('segTheme'), [[-1, 'Zufall']].concat(THEMES.map((t, i) => [i, t.name])), st.theme, (v) => upd({ theme: v }));
+    const mp = $('segMap'); mp.innerHTML = '';
+    for (const [id, name, info] of [['random', 'Zufall', 'Jedes Gefecht ein anderes Gelände']].concat(S.MAPS.map((x) => [x.id, x.name, x.info]))) {
+      const b = document.createElement('button');
+      b.className = 'mapcard' + (id === st.map ? ' on' : '');
+      b.title = info;
+      const thumb = id === 'random' ? '' : mapThumb(id);
+      b.innerHTML = `<div class="th"${thumb ? ` style="background-image:url(${thumb})"` : ''}>${thumb ? '' : '?'}</div><span>${esc(name)}</span>`;
+      b.setAttribute('aria-pressed', id === st.map ? 'true' : 'false');
+      b.addEventListener('click', () => { SND.click(); upd({ map: id }); });
+      mp.appendChild(b);
+    }
+    for (const el of $('settingsHost').querySelectorAll('button')) el.tabIndex = host ? 0 : -1;
     if (host) {
-      const upd = (patch) => send(Object.assign({ t: 'settings' }, st, patch));
-      seg($('segTanks'), [[1, '1'], [2, '2'], [3, '3'], [4, '4']], st.tanks, (v) => upd({ tanks: v }));
-      seg($('segTime'), [[20, '20 s'], [30, '30 s'], [45, '45 s'], [60, '60 s'], [0, 'Ohne', 'Ohne Zeitlimit – zum Üben']], st.turnTime, (v) => upd({ turnTime: v }));
-      seg($('segMap'), [['random', 'Zufall']].concat(S.MAPS.map((x) => [x.id, x.name, x.info])), st.map, (v) => upd({ map: v }));
-      seg($('segTheme'), [[-1, 'Zufall']].concat(THEMES.map((t, i) => [i, t.name])), st.theme, (v) => upd({ theme: v }));
-      seg($('segBots'), S.BOT_LEVELS.map((b) => [b.id, '+ ' + b.name]), -1, (v) => send({ t: 'addbot', level: v }));
+      const bb = $('segBots'); bb.innerHTML = '';
+      for (const lv of S.BOT_LEVELS) {
+        const b = document.createElement('button');
+        b.innerHTML = `+ ${esc(lv.name)}<small>${BOT_HELP[lv.id] || ''}</small>`;
+        b.addEventListener('click', () => { SND.click(); send({ t: 'addbot', level: lv.id }); });
+        bb.appendChild(b);
+      }
       const ready = active.filter((p) => p.connected).length >= 2;
       $('btnStart').disabled = !ready;
       $('btnStart').textContent = ready ? 'GEFECHT STARTEN' : 'MINDESTENS 2 TEILNEHMER';
@@ -383,6 +520,7 @@
     renderLook();
     const bt = $('board');
     const rows = lobby.board || [];
+    $('boardSum').textContent = rows.length ? `Bestenliste (${rows.length})` : 'Bestenliste';
     bt.innerHTML = rows.length
       ? '<tr><th></th><th>Name</th><th>Siege</th><th>Spiele</th><th>Schaden</th><th>Abschüsse</th></tr>' +
         rows.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.name)}</td><td><b>${r.w}</b></td><td>${r.g}</td><td>${r.dmg}</td><td>${r.k}</td></tr>`).join('')
@@ -416,26 +554,31 @@
   function drawLookPreview(now) {
     const c = $('lookPrev'); if (!c || $('lobby').classList.contains('hidden')) return;
     const x = c.getContext('2d');
-    x.setTransform(1, 0, 0, 1, 0, 0);
-    x.clearRect(0, 0, c.width, c.height);
+    const k = c.width / 240; // gezeichnet in 240×120, skaliert auf die Canvas-Größe
+    x.setTransform(k, 0, 0, k, 0, 0);
+    x.clearRect(0, 0, 240, 120);
     const th = THEMES[0];
-    const gr = x.createLinearGradient(0, 0, 0, c.height); gr.addColorStop(0, th.sky1); gr.addColorStop(1, th.sky2);
-    x.fillStyle = gr; x.fillRect(0, 0, c.width, c.height);
-    x.fillStyle = '#4E4535'; x.fillRect(0, 96, c.width, 24);
-    x.fillStyle = '#6B7340'; x.fillRect(0, 94, c.width, 4);
-    x.setTransform(2.7, 0, 0, 2.7, 116, 94 - 10 * 2.7);
+    const gr = x.createLinearGradient(0, 0, 0, 120); gr.addColorStop(0, th.sky1); gr.addColorStop(1, th.sky2);
+    x.fillStyle = gr; x.fillRect(0, 0, 240, 120);
+    x.fillStyle = '#4E4535'; x.fillRect(0, 96, 240, 24);
+    x.fillStyle = '#6B7340'; x.fillRect(0, 94, 240, 4);
+    x.setTransform(2.7 * k, 0, 0, 2.7 * k, 116 * k, (94 - 10 * 2.7) * k);
     const aim = 30 + Math.sin(now / 900) * 18;
     drawTank(x, { x: 0, y: 0, tilt: 0, face: 1, aim, alive: true }, myLook, lookPreview.color, now, true);
   }
   $('btnStart').addEventListener('click', () => { SND.unlock(); send({ t: 'start' }); });
-  $('btnLeave').addEventListener('click', () => {
-    if (amHost && !confirm('Du bist Gastgeber. Wenn du gehst, wird der Raum für alle geschlossen. Wirklich verlassen?')) return;
+  $('btnLeave').addEventListener('click', async () => {
+    if (amHost && !(await ask('LOBBY VERLASSEN?', 'Du bist Gastgeber. Wenn du gehst, wird der Raum für alle geschlossen.', 'VERLASSEN'))) return;
     leave();
   });
   $('btnShare').addEventListener('click', async () => {
     const url = location.origin + location.pathname + '#' + roomCode;
     const text = `Komm ins Gefecht! STAHLFRONT – Raumcode ${roomCode}`;
-    try { await navigator.clipboard.writeText(text + '\n' + url); toast('Einladung kopiert – einfach in den Chat einfügen'); }
+    try {
+      await navigator.clipboard.writeText(text + '\n' + url);
+      const b = $('btnShare'); b.textContent = '✓ EINLADUNG KOPIERT'; b.classList.add('copied');
+      clearTimeout(b._t); b._t = setTimeout(() => { b.textContent = 'EINLADUNG KOPIEREN'; b.classList.remove('copied'); }, 2500);
+    }
     catch (e) { prompt('Link kopieren:', url); }
   });
 
@@ -730,10 +873,12 @@
   function setText(id, v) { if (hudCache[id] !== v) { hudCache[id] = v; $(id).textContent = v; } }
   function buildTeamsPanel() {
     const el = $('teams');
-    el.innerHTML = '<div class="title">STAHLFRONT</div>';
+    el.innerHTML = '';
     G.teams.forEach((t, i) => {
       const row = document.createElement('div'); row.className = 't'; row.id = 'tm' + i;
-      row.innerHTML = `<span>${esc(t.name)}${t.bot ? ' <small>KI</small>' : ''}</span><div class="bar"><div style="background:${S.TEAM_COLORS[t.color]};width:100%"></div></div>`;
+      row.title = t.name + (t.bot ? ' (KI)' : '');
+      // ein Balken pro Panzer, rechts die Summe der Panzerung
+      row.innerHTML = `<span>${esc(t.name)}</span><div class="hp">${t.tanks.map(() => `<div><i style="background:${S.TEAM_COLORS[t.color]};width:100%"></i></div>`).join('')}</div><b></b>`;
       el.appendChild(row);
     });
     hudCache = {};
@@ -747,15 +892,25 @@
       const row = $('tm' + i); if (!row) return;
       row.classList.toggle('cur', i === m.tt);
       row.classList.toggle('out', alive === 0);
-      row.querySelector('.bar div').style.width = Math.round((hp / (t.tanks.length * 100)) * 100) + '%';
+      const bars = row.querySelectorAll('.hp i');
+      t.tanks.forEach((k, j) => { const s = tanks.get(k.id); if (bars[j]) bars[j].style.width = (s && s.alive ? s.hp : 0) + '%'; });
+      row.querySelector('b').textContent = String(hp);
     });
     if (team) {
-      const k = `${m.tt}|${m.tb}|${m.ph}`;
+      const k = `${m.tt}|${m.tb}|${m.ph}|${myTurn}|${m.rd}`;
       if (hudCache.turn !== k) {
         hudCache.turn = k;
-        const info = G.tankInfo[m.tb];
-        $('turnInfo').innerHTML = m.ph === 'over' ? 'GEFECHT BEENDET' : m.ph === 'pause' ? 'WARTE AUF MITSPIELER …' :
-          `<i class="sw" style="background:${S.TEAM_COLORS[team.color]}"></i>ZUG: <b style="color:#F2C766">${esc(team.name.toUpperCase())}</b>${team.bot ? ' <small style="color:#B3B096">KI</small>' : ''}${info ? ` <small style="color:#B3B096">„${esc(info.cs)}“</small>` : ''}`;
+        const info = G.tankInfo[m.tb], col = S.TEAM_COLORS[team.color];
+        let who, sub;
+        if (m.ph === 'over') { who = 'GEFECHT BEENDET'; sub = ''; }
+        else if (m.ph === 'pause') { who = 'PAUSE'; sub = 'WARTE AUF MITSPIELER'; }
+        else if (myTurn) { who = 'DU BIST DRAN'; sub = `${info ? '„' + info.cs.toUpperCase() + '“ · ' : ''}DEIN ${m.rd}. ZUG`; }
+        else { who = `${team.name.toUpperCase()} IST DRAN`; sub = `${team.bot ? 'KI' : 'ZUG'}${info ? ' · „' + info.cs.toUpperCase() + '“' : ''}`; }
+        $('turnWho').textContent = who;
+        $('turnSub').textContent = sub;
+        $('topbar').style.setProperty('--tc', m.ph === 'over' || m.ph === 'pause' ? '#E0A526' : col);
+        $('turnFrame').style.setProperty('--tc', col);
+        $('turnFrame').classList.toggle('show', myTurn);
       }
     }
     const tm = $('timer');
@@ -767,9 +922,16 @@
     } else { setText('timer', '··'); tm.classList.add('idle'); tm.classList.remove('low'); }
     document.body.classList.toggle('slowmo', m.sl === 1);
     const wi = m.wi;
-    setText('windVal', wi === 0 ? '0' : wi < 0 ? `◀ ${-wi}` : `${wi} ▶`);
-    const wf = $('windFill'), w = Math.abs(wi) * 4;
-    wf.style.width = w + 'px'; wf.style.left = (wi < 0 ? 40 - w : 40) + 'px';
+    if (hudCache.wind !== wi) {
+      // Wind als Pfeile: Richtung = wohin die Granaten treiben, gefüllte Pfeile = Stärke (0–3)
+      hudCache.wind = wi;
+      const n = wi === 0 ? 0 : Math.min(3, Math.ceil(Math.abs(wi) / 3.4)), ch = wi < 0 ? '◀' : '▶';
+      let h = '';
+      for (let i = 0; i < 3; i++) h += `<i class="${i < n ? '' : 'dim'}">${wi === 0 ? '·' : ch}</i>`;
+      $('windArrows').innerHTML = h;
+      $('windVal').textContent = String(Math.abs(wi));
+      $('windBox').title = wi === 0 ? 'Kein Wind' : `Wind ${Math.abs(wi)} nach ${wi < 0 ? 'links' : 'rechts'}`;
+    }
     $('controls').classList.toggle('hidden', !myTurn);
     if (!myTurn && Object.values(keys).some(Boolean)) releaseKeys();
     if (!myTurn) aimDrag = null;
@@ -905,6 +1067,17 @@
   window.addEventListener('keyup', (e) => { const k = KEYMAP[e.code]; if (k) setKey(k, false); });
   window.addEventListener('blur', () => { if (Object.values(keys).some(Boolean)) releaseKeys(); });
 
+  // Laptop (feiner Zeiger): Tastenhilfe statt Fahr-/Winkel-/Kraft-Knöpfen; per Knopf umschaltbar
+  const finePointer = window.matchMedia && matchMedia('(pointer: fine)').matches;
+  function setPad(show) {
+    document.body.classList.toggle('finep', finePointer);
+    document.body.classList.toggle('kbd', finePointer && !show);
+    $('btnPad').textContent = show ? 'BILDSCHIRM-KNÖPFE AUSBLENDEN' : 'BILDSCHIRM-KNÖPFE ZEIGEN';
+    store.set('sf_pad', show ? '1' : '0');
+  }
+  setPad(store.get('sf_pad') === '1');
+  $('btnPad').addEventListener('click', () => setPad(document.body.classList.contains('kbd')));
+
   // ---------- Steuerung: Maus auf der Karte ----------
   // Ziehen am eigenen Panzer = zielen (Richtung = Winkel, Länge = Kraft); sonst Karte verschieben
   const canvas = $('c');
@@ -1011,9 +1184,9 @@
   function openGameMenu() { $('btnAbort').classList.toggle('hidden', !amHost); $('gameMenu').classList.remove('hidden'); }
   $('btnMenu').addEventListener('click', openGameMenu);
   $('btnGMClose').addEventListener('click', () => $('gameMenu').classList.add('hidden'));
-  $('btnAbort').addEventListener('click', () => { if (confirm('Gefecht für alle abbrechen und zurück zur Lobby?')) { send({ t: 'lobby' }); $('gameMenu').classList.add('hidden'); } });
-  $('btnQuit').addEventListener('click', () => {
-    if (amHost && !confirm('Du bist Gastgeber – das Spiel endet dann für alle. (Du kannst es später im Hauptmenü fortsetzen.) Wirklich verlassen?')) return;
+  $('btnAbort').addEventListener('click', async () => { if (await ask('GEFECHT ABBRECHEN?', 'Das Gefecht wird für alle beendet, alle kommen zurück in die Lobby.', 'ABBRECHEN')) { send({ t: 'lobby' }); $('gameMenu').classList.add('hidden'); } });
+  $('btnQuit').addEventListener('click', async () => {
+    if (amHost && !(await ask('SPIEL VERLASSEN?', 'Du bist Gastgeber – das Spiel endet dann für alle. Du kannst es später im Hauptmenü fortsetzen.', 'VERLASSEN'))) return;
     $('gameMenu').classList.add('hidden');
     leave();
   });
