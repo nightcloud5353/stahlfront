@@ -292,6 +292,13 @@
       const parts = Math.ceil(rle.length / CH);
       for (let i = 0; i < parts; i++) p.conn.send({ t: 'terrain', i, n: parts, d: rle.slice(i * CH, (i + 1) * CH) });
       p.conn.send(this.startInfo());
+      // läuft gerade ein Erdrutsch? Noch nicht abgebrochene Brocken mitschicken (sonst bleibt bei ihm Erde in der Luft hängen)
+      const pend = this.g.slides.filter((s) => !s.released);
+      if (pend.length) {
+        const d = [];
+        for (const s of pend) d.push(s.id, s.x0, s.y0, Math.round(s.vx * 100), Math.max(0, s.rel - this.tickN), s.bits);
+        p.conn.send({ t: 'slide', d });
+      }
       if (this.phase === 'over' && this.lastOver) p.conn.send(this.lastOver);
       this.sendState();
     }
@@ -1176,8 +1183,9 @@
           p.x += (p.dx * sp) / 2; p.y += (p.dy * sp) / 2; p.dl -= sp / 2;
           if (this.hitsTank(p.x, p.y, p)) return this.boomAt(p);
         }
+        // jedes Graben melden – sonst fehlen bei den Mitspielern Stücke des Tunnels
         this.carveRaw(p.x, p.y, 7);
-        if (p.age % 2 === 0) this.broadcast({ t: 'carve', x: Math.round(p.x), y: Math.round(p.y), r: 7, raw: 1 });
+        this.broadcast({ t: 'carve', x: Math.round(p.x), y: Math.round(p.y), r: 7, raw: 1 });
         if (p.dl <= 0) return this.boomAt(p);
         if (p.y > g.waterY) { p.dead = true; this.broadcast({ t: 'fx', k: 'splash', x: r1(p.x), y: g.waterY }); }
         return;
@@ -1254,9 +1262,11 @@
       const g = this.g, m = this.mask;
       const x0 = Math.max(0, Math.floor(cx - r - 56)), x1 = Math.min(W - 1, Math.ceil(cx + r + 56));
       const y0 = Math.max(0, Math.floor(cy - r - 40)), y1 = Math.min(H - 1, Math.ceil(cy + r + 16));
-      const rw = x1 - x0 + 1, rh = y1 - y0 + 1;
-      const loose = new Uint8Array(rw * rh);
-      const L = (x, y) => x >= x0 && x <= x1 && y >= y0 && y <= y1 && loose[(y - y0) * rw + (x - x0)] === 1;
+      // lose Pixel: Markierung über die ganze Karte (ein lockerer Brocken kann über den Suchbereich hinausragen)
+      if (!this.looseBuf) this.looseBuf = new Uint8Array(W * H);
+      const LB = this.looseBuf, looseIdx = [];
+      const mark = (i) => { if (!LB[i]) { LB[i] = 1; looseIdx.push(i); } };
+      const L = (x, y) => LB[y * W + x] === 1;
       let count = 0;
       // 1) dünne Überhänge (Erde mit Luft darunter)
       for (let x = x0; x <= x1; x++) {
@@ -1276,7 +1286,7 @@
           // (frei schwebende Felsen ohne Stütze auf beiden Seiten gehören zur Karte und bleiben)
           if (!fall && th <= SLIDE_SPAN_TH) { const d = this.supportDist(x, bot); fall = d !== Infinity && d > Math.max(10, th * 2); }
           if (fall) {
-            for (let k = top; k <= bot; k++) loose[(k - y0) * rw + (x - x0)] = 1;
+            for (let k = top; k <= bot; k++) mark(k * W + x);
             count += th;
           }
         }
@@ -1311,25 +1321,27 @@
           }
           if (!ok) break;
         }
-        if (ok) for (const j of comp) {
-          const jx = j % W, jy = (j / W) | 0;
-          if (jx < x0 || jx > x1 || jy < y0 || jy > y1) continue;
-          if (!loose[(jy - y0) * rw + (jx - x0)]) { loose[(jy - y0) * rw + (jx - x0)] = 1; count++; }
-        }
+        if (ok) for (const j of comp) { mark(j); count++; }
       }
       if (!count) return;
-      // 3) in Brocken zerlegen
+      // 3) in Brocken zerlegen (Raster an festen 3er-Positionen, damit alle Pixel eines Brockens zusammenbleiben)
+      const cells = new Map();
+      for (const i of looseIdx) {
+        LB[i] = 0; // Markierung gleich wieder aufräumen
+        if (m[i] !== 1) continue;
+        const x = i % W, y = (i / W) | 0, gx = x - (x % GRAIN), gy = y - (y % GRAIN);
+        const key = gy * W + gx;
+        let c = cells.get(key);
+        if (!c) { c = { gx, gy, bits: 0, n: 0 }; cells.set(key, c); }
+        c.bits |= 1 << ((y - gy) * GRAIN + (x - gx)); c.n++;
+      }
       const out = [];
       let total = 0;
       // jede Spalte bricht als Ganzes (sonst bleibt ein oberer Brocken auf dem noch festen unteren liegen)
       const colRel = {};
-      for (let gy = y0; gy <= y1; gy += GRAIN) for (let gx = x0; gx <= x1; gx += GRAIN) {
-        let bits = 0, n = 0;
-        for (let k = 0; k < GRAIN * GRAIN; k++) {
-          const px = gx + (k % GRAIN), py = gy + ((k / GRAIN) | 0);
-          if (px <= x1 && py <= y1 && loose[(py - y0) * rw + (px - x0)] && m[py * W + px] === 1) { bits |= 1 << k; n++; }
-        }
-        if (!n) continue;
+      // nächste Brocken zuerst (falls die Obergrenze greift, bricht das Material am Krater)
+      const list = [...cells.values()].sort((a, b) => Math.hypot(a.gx - cx, a.gy - cy) - Math.hypot(b.gx - cx, b.gy - cy));
+      for (const { gx, gy, bits, n } of list) {
         if ((total += n) > SLIDE_MAX) break;
         if (colRel[gx] === undefined) colRel[gx] = this.tickN + Math.round(Math.abs(gx + 1.5 - cx) * 0.12 + rand(0, 5));
         const gr = {

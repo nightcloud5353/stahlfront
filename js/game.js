@@ -510,13 +510,20 @@
     // Rückwand: dunkle Erde unter der ursprünglichen Oberfläche
     bx.fillStyle = `rgb(${Math.round(th.d2[0] * 0.58)},${Math.round(th.d2[1] * 0.58)},${Math.round(th.d2[2] * 0.58)})`;
     bx.beginPath(); bx.moveTo(0, H);
+    // Welche Erde hängt am Boden? (Schwebende Felsen und Betonbrücken nicht – dahinter bleibt Himmel.)
+    const grounded = new Uint8Array(W * H), stack = new Int32Array(W * H);
+    let sp = 0;
+    for (let x = 0; x < W; x++) { const i = (H - 1) * W + x; if (mask[i] === 1) { grounded[i] = 1; stack[sp++] = i; } }
+    while (sp) {
+      const i = stack[--sp], x = i % W;
+      if (x > 0 && mask[i - 1] === 1 && !grounded[i - 1]) { grounded[i - 1] = 1; stack[sp++] = i - 1; }
+      if (x < W - 1 && mask[i + 1] === 1 && !grounded[i + 1]) { grounded[i + 1] = 1; stack[sp++] = i + 1; }
+      if (i >= W && mask[i - W] === 1 && !grounded[i - W]) { grounded[i - W] = 1; stack[sp++] = i - W; }
+      if (i + W < W * H && mask[i + W] === 1 && !grounded[i + W]) { grounded[i + W] = 1; stack[sp++] = i + W; }
+    }
     for (let x = 0; x < W; x += 2) {
-      let run = 0, top = H, first = -1;
-      for (let y = 0; y < H; y++) {
-        if (mask[y * W + x] === 1) { if (first < 0) first = y; run++; if (run >= 40) { top = y - 39; break; } } else run = 0;
-      }
-      // dünne Decke über einer Höhle gehört dazu (nicht aber hoch schwebende Felsen)
-      if (first >= 0 && top - first < 145) top = first;
+      let top = H;
+      for (let y = 0; y < H; y++) if (grounded[y * W + x]) { top = y; break; }
       bx.lineTo(x, top + 6);
     }
     bx.lineTo(W, H); bx.closePath(); bx.fill();
@@ -1051,19 +1058,23 @@
   const GR = 3, SLOT_ROW = 64, SLOTS = 64 * 64;
   const slideSprite = document.createElement('canvas'); slideSprite.width = SLOT_ROW * GR; slideSprite.height = (SLOTS / SLOT_ROW) * GR;
   const slideSx = slideSprite.getContext('2d');
-  let slideSlot = 0, slideAcc = 0, slideLast = 0;
+  let slideSlot = 0, slideAcc = 0, slideLast = 0, slideSeq = 0;
   const slides = new Map();
+  // Wann zuletzt Erde auf eine Stelle gefallen ist (Nummer des Erdrutsches). Bricht ein älterer Brocken erst
+  // danach bei uns ab (verspätete Nachricht, Tab im Hintergrund), darf er diese neue Erde nicht mitlöschen.
+  const landedSeq = new Uint32Array(W * H);
   const slotXY = (s) => [(s % SLOT_ROW) * GR, Math.floor(s / SLOT_ROW) * GR];
   function onSlide(m) {
     if (!G) return;
     const now = performance.now(), d = m.d;
+    const seq = ++slideSeq;
     for (let i = 0; i < d.length; i += 6) {
       const slot = slideSlot++ % SLOTS, [sx, sy] = slotXY(slot);
       const x = d[i + 1], y = d[i + 2], bits = d[i + 5];
       slideSx.clearRect(sx, sy, GR, GR);
       // Aussehen des Brockens vom Gelände übernehmen (nur die Pixel, die wirklich abbrechen)
       for (let k = 0; k < GR * GR; k++) if (bits & (1 << k)) slideSx.drawImage(G.terrain.soil, x + (k % GR), y + ((k / GR) | 0), 1, 1, sx + (k % GR), sy + ((k / GR) | 0), 1, 1);
-      slides.set(d[i], { x, y, x0: x, y0: y, vx: d[i + 3] / 100, vy: 0, bits, slot, rel: now + d[i + 4] * 16.7, released: false, age: 0, rest: false, frames: 0 });
+      slides.set(d[i], { x, y, x0: x, y0: y, vx: d[i + 3] / 100, vy: 0, bits, slot, rel: now + d[i + 4] * 16.7, released: false, age: 0, rest: false, frames: 0, seq });
     }
   }
   function releaseGrain(s) {
@@ -1071,6 +1082,7 @@
     const T = G.terrain;
     for (let k = 0; k < GR * GR; k++) if (s.bits & (1 << k)) {
       const px = s.x0 + (k % GR), py = s.y0 + ((k / GR) | 0);
+      if (landedSeq[py * W + px] >= s.seq) continue; // hier liegt schon neue Erde
       T.sx.clearRect(px, py, 1, 1);
       G.mask[py * W + px] = 0;
     }
@@ -1094,6 +1106,7 @@
         if (s && src.length) { const [sx, sy] = slotXY(s.slot), kk = src[n++ % src.length]; T.sx.drawImage(slideSprite, sx + (kk % GR), sy + ((kk / GR) | 0), 1, 1, px, py, 1, 1); }
         else { const th = G.theme; T.sx.fillStyle = `rgb(${th.d1[0]},${th.d1[1]},${th.d1[2]})`; T.sx.fillRect(px, py, 1, 1); }
         G.mask[py * W + px] = 1;
+        landedSeq[py * W + px] = slideSeq;
       }
       if (Math.random() < 0.06) particles.push({ x: x + 1.5, y: y + 1, vx: (Math.random() - 0.5) * 0.8, vy: -0.3, life: 0, max: 50, size: 3 + Math.random() * 2, col: '#9A8A6E', type: 'smoke' });
     }
