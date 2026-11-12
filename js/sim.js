@@ -502,6 +502,13 @@
       }
       const n = order.length, margin = 150, span = (W - 2 * margin) / n;
       const anyFloor = (x) => { const f = this.floorsAt(x); if (!f.length) return null; return g.map === 'hoehlen' ? pick(f) : f[0]; };
+      // fester Stand: Boden direkt unter der Mitte und links/rechts kaum Höhenunterschied
+      // (sonst berührt der Panzer nur eine steile Flanke und rutscht sofort ab – z. B. an Inselrändern)
+      const steady = (x, y) => {
+        if (!this.solid(x, y + R + 2)) return false;
+        const yl = this.groundBelow(x - 9, y), yr = this.groundBelow(x + 9, y);
+        return yl !== null && yr !== null && Math.abs(yl - yr) < 14;
+      };
       order.forEach((team, i) => {
         let pos = null;
         for (let a = 0; a < 80 && !pos; a++) {
@@ -509,13 +516,13 @@
           const x = clamp(margin + span * (i + 0.5) + rand(-span * spread, span * spread), 110, W - 110);
           const y = anyFloor(x);
           if (y === null || y > g.waterY - 45) continue;
-          if (a < 60 && this.normalAt(x, y + R, 6)[1] > PHYS.SLIDE_NY) continue;
+          if (a < 60 && (!steady(x, y) || this.normalAt(x, y + R, 6)[1] > PHYS.SLIDE_NY)) continue;
           if (g.tanks.some((t) => Math.abs(t.x - x) < 70 && Math.abs(t.y - y) < 60)) continue;
           pos = [x, y];
         }
         for (let a = 0; a < 300 && !pos; a++) {
           const x = rand(110, W - 110), y = anyFloor(x);
-          if (y !== null && y < g.waterY - 45 && !g.tanks.some((t) => Math.abs(t.x - x) < 40 && Math.abs(t.y - y) < 40)) pos = [x, y];
+          if (y !== null && y < g.waterY - 45 && (a >= 200 || steady(x, y)) && !g.tanks.some((t) => Math.abs(t.x - x) < 40 && Math.abs(t.y - y) < 40)) pos = [x, y];
         }
         if (!pos) pos = [W / 2, 100];
         const t = {
@@ -889,7 +896,7 @@
       const r = Math.random();
       if (avail('cluster') && r < 0.18) w = 'cluster';
       else if (avail('drill') && r < 0.3) w = 'drill';
-      else if (r < 0.42) w = 'bouncer';
+      // Abpraller bewusst nicht: die Flugbahn-Suche unten kennt kein Abprallen + Zünder, die KI träfe damit fast nie
       // beste Lösung suchen
       const face = target.x < t.x ? -1 : 1;
       const tt = Object.assign({}, t, { face });
