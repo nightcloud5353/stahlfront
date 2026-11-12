@@ -17,7 +17,7 @@
   const RETREAT = 2.5;         // Sekunden Rückzug nach dem Schuss
   const MAX_HP = 100;
   const SUDDEN_DEATH_ROUNDS = 7;
-  const WATER_RISE = 12;
+  const WATER_RISE = 24;      // px pro Runde (verteilt auf die Züge der noch lebenden Teams)
   const BARREL_R = 7;
   const CRATE_R = 8;
   const CRATE_EVERY = 3;
@@ -30,13 +30,13 @@
   // [Radius, Maximalschaden, Rückstoß]
   const BOOM = {
     shell:   [40, 48, 6.2],
-    bouncer: [44, 50, 6.6],
+    bouncer: [40, 42, 6.2],   // unter der HE-Granate: dafür kaum Wind
     cluster: [28, 22, 5.0],
     bomblet: [21, 16, 4.4],
     drill:   [40, 52, 6.6],
     mine:    [34, 45, 7.0],
-    strike:  [28, 22, 5.0],
-    mg:      [6,  8,  1.4],
+    strike:  [28, 28, 5.0],
+    mg:      [6,  6,  1.4],   // 5 Kugeln = max. 30 (kein Wind, kein Zielen der Kraft)
     death:   [26, 12, 4.5],
     barrel:  [40, 30, 6.5],
     crate:   [30, 20, 5.0],
@@ -823,7 +823,7 @@
         }
         case 'strike': {
           for (let i = 0; i < 5; i++) {
-            const x = target.x + (i - 2) * 30 + rand(-4, 4);
+            const x = target.x + (i - 2) * 24 + rand(-4, 4);
             g.queue.push({ at: this.tickN + i * 7, p: { id: 0, type: 'strike', x, y: -60, vx: -g.wind * 0.6, vy: 3, owner: -1, age: 0, fuse: -1, src } });
           }
           this.broadcast({ t: 'fx', k: 'strike', x: Math.round(target.x), y: Math.round(target.y) });
@@ -1369,7 +1369,7 @@
       }
       if (!g.waterRaised && g.turnCount >= g.teams.length * SUDDEN_DEATH_ROUNDS) {
         if (g.turnCount === g.teams.length * SUDDEN_DEATH_ROUNDS) this.sendMsg('HOCHWASSER – das Wasser steigt jede Runde!', 'warn');
-        g.waterY -= WATER_RISE;
+        g.waterY = Math.round(g.waterY - WATER_RISE / Math.max(1, alive.length));
         g.waterRaised = true;
         g.settleT = 0;
         return;
