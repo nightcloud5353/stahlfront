@@ -391,7 +391,7 @@
       if ((g.phase === 'turn' || g.phase === 'retreat') && act) {
         if (!act.alive) this.startSettle();
         else {
-          if (g.phase === 'turn' && g.bot) this.botThink();
+          if (g.bot) this.botThink();
           this.control(act);
         }
       }

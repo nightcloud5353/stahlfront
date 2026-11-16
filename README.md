@@ -45,7 +45,7 @@ Reines HTML/CSS/JavaScript ohne Build-Schritt, keine Abhängigkeiten außer [Pee
 | `js/sim-terrain.js` | Gelände erzeugen, Krater, Erdrutsche |
 | `js/sim-world.js` | Panzer, Fässer, Kisten: Platzierung, Fahren, Physik |
 | `js/sim-weapons.js` | Waffen, Geschosse, Explosionen, Napalm |
-| `js/sim-bot.js` | KI-Gegner |
+| `js/sim-bot.js` | KI-Gegner: berechnet Flugbahnen aller Waffen vorab, fährt, nutzt Seilwinde, Kisten, Rammen, Minen, C4 |
 | `js/game.js` | Darstellung, HUD und Steuerung |
 | `js/tank-art.js` | Panzer zeichnen |
 | `js/net.js`, `js/relay.js` | Verbindung (Internet-Server bzw. WebRTC) |
@@ -59,7 +59,7 @@ Zum Spielen ist nichts davon nötig – nur für die Entwicklung (Node.js 20 ode
 
 ```bash
 npm install
-npm test        # Simulation in Node: Lobby, Gelände, Schaden, Spielstand, komplette KI-Gefechte auf allen Karten
+npm test        # Simulation in Node: Lobby, Gelände, Schaden, Spielstand, komplette KI-Gefechte auf allen Karten, KI-Entscheidungen
 npm run lint    # ESLint: Tippfehler bei Namen, doppelte Methoden usw.
 ```
 
