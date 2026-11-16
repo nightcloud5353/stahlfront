@@ -27,7 +27,7 @@
   const CRATE_HEAL = 25;
   const RESUME_WAIT = 25;      // Sekunden Wartezeit auf Mitspieler nach "Gefecht fortsetzen"
   const FIRE_REACH = R + 9;    // Abstand Flamme -> Panzermitte, ab dem es brennt
-  const FIRE_LAND = 8;         // Schaden, wenn Napalm auf einem Panzer landet (einmal pro Zug)
+  const FIRE_LAND = 12;        // Schaden, wenn Napalm auf einem Panzer landet (einmal pro Zug)
   const FIRE_DMG = 6;          // Schaden pro Zug im Feuer (+1 je weitere Flamme, max. FIRE_MAX)
   const FIRE_MAX = 12;
   const FIRE_ROUNDS = 2;       // so viele Runden brennt Napalm
@@ -44,17 +44,17 @@
   // [Radius, Maximalschaden, Rückstoß]
   const BOOM = {
     shell:   [40, 48, 6.2],
-    bouncer: [40, 42, 6.2],   // unter der HE-Granate: dafür kaum Wind
+    bouncer: [44, 48, 6.2],   // schwer zu zielen (springt, 3-s-Zünder) – daher etwas größerer Radius
     cluster: [28, 38, 5.0],
     bomblet: [21, 20, 4.4],   // Splitter streuen weit – sonst schwächer als die HE-Granate
-    drill:   [40, 52, 6.6],
+    drill:   [40, 46, 6.6],   // unter der HE-Granate: die Stärke ist Deckung und Beton
     mine:    [34, 45, 7.0],
     strike:  [28, 20, 5.0],   // trifft fast immer (Ziel anklicken) – daher pro Granate schwächer
     mg:      [6,  6,  1.4],   // 5 Kugeln = max. 30 (kein Wind, kein Zielen der Kraft)
     death:   [26, 12, 4.5],
     barrel:  [40, 30, 6.5],
     crate:   [30, 20, 5.0],
-    napalm:  [22, 14, 3.5],   // kleiner Knall – der Schaden kommt vom Feuer
+    napalm:  [26, 22, 3.5],   // kleiner Knall – der meiste Schaden kommt vom Feuer
     c4:      [62, 62, 8.5],   // stark, aber eine ganze Runde Vorwarnung
     nuke:    [120, 80, 11.5],
   };
@@ -64,7 +64,7 @@
     bomblet: { wind: 0.3, impact: true },
     strike:  { wind: 0.4, impact: true },
     drill:   { wind: 0.3, drill: true },
-    bouncer: { wind: 0.3, bounce: 0.55 },
+    bouncer: { wind: 0.3, bounce: 0.4 },  // springt flacher: besser berechenbar
     mine:    { wind: 0.0, bounce: 0.1 },
     napalm:  { wind: 0.8, impact: true },
     nuke:    { wind: 0.6, impact: true },

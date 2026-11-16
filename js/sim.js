@@ -511,11 +511,11 @@
         g.burnDone = true;
         if (g.fires.length && this.burnFires()) { g.settleT = 0; return; }
       }
-      // Sprengladungen gehen zu Beginn des nächsten Zuges ihres Teams hoch (oder sofort, wenn das Team schon raus ist)
+      // Sprengladungen gehen am Ende des Zuges hoch, in dem sie gelegt wurden (der Leger hat die Rückzugszeit zum Flüchten).
+      // Früher erst im nächsten eigenen Zug – bis dahin war jeder Gegner weggefahren (Balancing 1.19: ~0 Schaden pro Einsatz).
       if (!g.c4Done) {
         g.c4Done = true;
-        const nt = this.nextTeamIdx();
-        const due = g.proj.filter((p) => p.type === 'c4' && !(p.fuse > 0) && (p.src.team === nt || !g.teams[p.src.team].tanks.some((k) => k.alive)));
+        const due = g.proj.filter((p) => p.type === 'c4' && !(p.fuse > 0));
         if (due.length) {
           for (const p of due) { p.fuse = C4_FUSE; this.broadcast({ t: 'fx', k: 'trigger', x: r1(p.x), y: r1(p.y) }); }
           this.sendMsg(due.length > 1 ? 'Sprengladungen gezündet!' : 'Sprengladung gezündet!', 'warn');

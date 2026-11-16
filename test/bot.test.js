@@ -112,3 +112,19 @@ test('KI schießt nicht auf den eigenen Panzer', () => {
     assert.ok(hp - s.own[0].hp < 20, `eigener Panzer verlor ${hp - s.own[0].hp}`);
   });
 });
+
+test('Sprengladung geht am Ende des eigenen Zuges hoch – der Leger ist dann weg', () => {
+  withSeed(5, () => {
+    const s = setup();
+    s.place(s.bot, 1000); s.place(s.foes[0], 1045);
+    s.team.ammo = Object.assign(s.team.ammo, { cluster: 0, drill: 0, napalm: 0, strike: 0, mine: 0, nuke: 0, c4: 1 });
+    // HE/Abpraller auf so kurze Entfernung wären Eigenbeschuss -> KI nimmt die Sprengladung
+    const p = plan(s);
+    assert.equal(p.w, 'c4');
+    s.g.bot = { t: 5, plan: p, done: false, t0: 0 };
+    const foe = s.foes[0], hp = foe.hp, turn = s.g.turnCount;
+    assert.ok(run(s.sim, () => s.g.turnCount > turn, 60 * 30), 'Zug beendet');
+    assert.ok(hp - foe.hp >= 40, `Gegner verlor ${hp - foe.hp}`);
+    assert.equal(s.bot.hp, 100, 'Leger unverletzt');
+  });
+});

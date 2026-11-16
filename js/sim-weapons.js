@@ -300,16 +300,6 @@
       g.fires = g.fires.filter((f) => f.life > 0);
       return any;
     }
-    // welches Team als Nächstes dran ist (gleiche Regel wie nextTurn)
-    nextTeamIdx() {
-      const g = this.g, n = g.teams.length;
-      for (let i = 1; i <= n; i++) {
-        const ti = (g.turnTeam + i) % n;
-        if (g.teams[ti].tanks.some((t) => t.alive)) return ti;
-      }
-      return -1;
-    }
-
     mgShot(t, src) {
       if (!t || !t.alive) return;
       const [px, py] = this.pivot(t);

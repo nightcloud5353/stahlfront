@@ -16,7 +16,7 @@
 
   // Kosten knapper Munition (in "Schadenspunkten"): Spezialwaffen nur, wenn sie sich lohnen.
   // Die Kosten sinken im Lauf des Gefechts – wer Munition hortet, nimmt sie mit ins Grab.
-  const COST = { cluster: 5, drill: 4, mine: 3, strike: 7, napalm: 3, c4: 5, nuke: 10, winch: 3 };
+  const COST = { cluster: 5, drill: 4, mine: 3, strike: 7, napalm: 1, c4: 5, nuke: 10, winch: 3 };
   // Flugbahn-Art je Waffe
   const TRACE_KIND = { shell: 'impact', cluster: 'impact', napalm: 'impact', nuke: 'impact', drill: 'drill', bouncer: 'bounce' };
   const THROWERS = ['shell', 'bouncer', 'cluster', 'drill', 'napalm', 'nuke'];
@@ -134,8 +134,21 @@
     botCtx(team, t, sk) {
       const g = this.g;
       const tanks = g.tanks.filter((k) => k.alive).map((k) => ({ id: k.id, team: k.team, x: k.x, y: k.y, hp: k.hp, me: k === t }));
-      const objs = g.objs.filter((o) => o.alive).map((o) => ({ kind: o.kind, x: o.x, y: o.y, r: o.r, content: o.content }));
+      const objs = g.objs.filter((o) => o.alive).map((o) => ({ kind: o.kind, x: o.x, y: o.y, r: o.r, content: o.content, land: this.botLanding(o) }));
       return { team, sk, tanks, objs, wind: g.wind * sk.wind, self: tanks.find((k) => k.me) };
+    }
+    // wo landet eine Kiste am Fallschirm? (sinkt 1,8 px/Tick, treibt mit dem Wind)
+    botLanding(o) {
+      if (o.grounded || o.kind !== 'crate') return { x: o.x, y: o.y };
+      let x = o.x;
+      for (let k = 0; k < 3; k++) {
+        const f = this.floorsAt(clamp(Math.round(x), 0, W - 1)).find((y) => y >= o.y - 4);
+        if (f === undefined) return null;
+        const ticks = (f - o.y) / 1.8;
+        x = clamp(o.x + (o.chute ? this.g.wind * 0.5 * ticks : 0), 0, W - 1);
+        if (k === 2) return { x, y: f + R - o.r };
+      }
+      return null;
     }
     botSetSelf(ctx, k) {
       for (const s of ctx.tanks) s.me = s.id === k.id;
@@ -252,8 +265,11 @@
     // Raster-Suche Winkel × Kraft. Waffen mit gleicher Flugbahn teilen sich ein Raster (ähnlicher Windeinfluss).
     // Liefert je Waffe die besten Kandidaten.
     *botGrid(ctx, weapons, kind, windF, x, y, tilt, step) {
+      const t0x = x, t0y = y;
       const cands = {};
       for (const w of weapons) cands[w] = [];
+      const foes = ctx.tanks.filter((k) => k.team !== ctx.team.idx);
+      let near = null;
       for (const face of [-1, 1]) {
         const [px, py] = this.botPivot(x, y, tilt, face);
         for (let aim = step > 6 ? 6 : -9; aim <= PHYS.AIM_MAX; aim += step) {
@@ -264,11 +280,17 @@
                 const v = this.botImpactValue(ctx, w, hit.x, hit.y);
                 if (v > 0) cands[w].push({ face, aim, pw, v });
               }
+              // kein Treffer möglich? Dann wenigstens so nah wie möglich ran (gräbt sich durch Deckung)
+              for (const e of foes) {
+                const d = Math.hypot(e.x - hit.x, e.y - hit.y);
+                if (d > 60 && Math.hypot(t0x - hit.x, t0y - hit.y) > 70 && (!near || d < near.d)) near = { face, aim, pw, d };
+              }
             }
             if (this.botWork > BUDGET) yield;
           }
         }
       }
+      cands.near = near;
       return cands;
     }
     // Feinsuche um die besten Kandidaten; Treffer, die schon bei kleinen Zielfehlern danebengehen, zählen weniger
@@ -279,7 +301,7 @@
         const h = this.botTrace(ctx, kind, windF, ...this.botLaunch(face, clamp(a, PHYS.AIM_MIN, PHYS.AIM_MAX), clamp(p, 5, 100), px, py));
         return h ? this.botImpactValue(ctx, w, h.x, h.y) : 0;
       };
-      const e = Math.max(0.7, ctx.sk.a * 0.8), ep = Math.max(1, ctx.sk.p * 0.8);
+      const e = Math.max(0.8, ctx.sk.a), ep = Math.max(1.2, ctx.sk.p); // eigener Zielfehler
       let best = null;
       for (const c of cands.slice(0, 3)) {
         const [px, py] = this.botPivot(x, y, tilt, c.face);
@@ -313,7 +335,7 @@
         const [px, py] = this.botPivot(x, y, tilt, face);
         const elev = (Math.atan2(-(e.y - py), Math.abs(e.x - px)) * 180) / Math.PI;
         if (elev < PHYS.AIM_MIN || elev > PHYS.AIM_MAX) continue;
-        let v = 0, dealt = 0;
+        let v = 0, dealt = 0, killed = false;
         for (const da of [-1.2, -0.6, 0, 0.6, 1.2]) {
           const a = ((elev + da) * Math.PI) / 180, dx = face * Math.cos(a), dy = -Math.sin(a);
           let bx = px + dx * PHYS.MUZZLE, by = py + dy * PHYS.MUZZLE, who = null;
@@ -325,7 +347,7 @@
           this.botWork = (this.botWork || 0) + 200;
           if (!who) continue;
           if (who.team === ctx.team.idx) v -= 6 * 1.3;
-          else { v += 6; dealt += 6; if (who === e && dealt >= e.hp) v += 30; }
+          else { v += 6; if (who === e) dealt += 6; if (!killed && dealt >= e.hp) { killed = true; v += 30; } }
         }
         if (v > 0 && (!best || v > best.v)) best = { face, aim: elev, v };
       }
@@ -399,7 +421,7 @@
           for (let i = 0; i < path.length; i++) {
             const p = path[i];
             for (const o of ctx.objs) {
-              if (o.kind !== 'crate' || got.has(o) || Math.hypot(o.x - p.x, o.y - p.y) >= R + o.r + 3) continue;
+              if (o.kind !== 'crate' || !o.land || got.has(o) || Math.hypot(o.land.x - p.x, o.land.y - p.y) >= R + o.r + 3) continue;
               got.add(o);
               crates += this.botCrateValue(t, o) * (can(0.6) ? 1 : 0.4);
             }
@@ -462,13 +484,14 @@
       const late = Math.max(0.3, 1 - team.turns / 14);
       const cost = (w) => (COST[w] || 0) * (foes.length > 1 ? 1 : 0.6) * late * (0.5 + sk.smart * 0.5);
       const noise = (1 - sk.smart) * 8; // Rekrut entscheidet launischer
-      const add = (o) => { o.v += gauss() * noise; opts.push(o); };
+      const add = (o) => { o.raw = o.v; o.v += gauss() * noise - cost(o.w); opts.push(o); };
       const aimNoise = (aim) => clamp(aim + gauss() * sk.a, PHYS.AIM_MIN, PHYS.AIM_MAX);
       const powNoise = (pw) => clamp(pw + gauss() * sk.p, 5, 100);
 
       // Wurfwaffen: Raster je Flugbahn-Art, danach Feinsuche je Waffe
       const throwers = THROWERS.filter((w) => avail(w) && (w === 'shell' || can(w === 'nuke' ? 0 : 0.5)));
       const groups = [];
+      let near = null;
       for (const w of throwers) {
         const kind = TRACE_KIND[w], windF = PT[w].wind;
         // gleicher Flug, ähnlicher Wind -> ein gemeinsames Raster
@@ -477,10 +500,11 @@
       }
       for (const gr of groups) {
         const cands = yield* this.botGrid(ctx, gr.ws, gr.kind, gr.windF, t.x, t.y, t.tilt, gr.kind === 'bounce' ? 7 : 5);
+        if (cands.near && (!near || (gr.kind !== 'bounce' && cands.near.d < near.d))) near = Object.assign({ w: gr.ws.includes('drill') ? 'drill' : 'shell' }, cands.near);
         for (const w of gr.ws) {
           if (!cands[w].length) continue;
           const s = yield* this.botRefine(ctx, w, cands[w], t.x, t.y, t.tilt);
-          if (s) add({ kind: 'shot', w, face: s.face, aim: aimNoise(s.aim), power: powNoise(s.pw), v: s.v - cost(w) });
+          if (s) add({ kind: 'shot', w, face: s.face, aim: aimNoise(s.aim), power: powNoise(s.pw), v: s.v });
         }
       }
       // MG (nur auf Sicht)
@@ -501,7 +525,7 @@
           }
           if (this.botWork > BUDGET) yield;
         }
-        if (best && best.v > 0) add({ kind: 'shot', w: 'strike', tx: best.tx + gauss() * sk.a * 3, ty: best.ty, v: best.v - cost('strike') });
+        if (best && best.v > 0) add({ kind: 'shot', w: 'strike', tx: best.tx + gauss() * sk.a * 3, ty: best.ty, v: best.v });
       }
       // Rammstoß: am liebsten ins Wasser oder in die Tiefe
       for (const face of [-1, 1]) {
@@ -520,19 +544,19 @@
           s.x = away[away.length - 1].x; s.y = away[away.length - 1].y; // nach dem Ablegen fahren wir weg
           const v = this.botBlast(ctx, t.x - face * 26, t.y, BOOM.mine[0], BOOM.mine[1], 1) * (Math.abs(dx) < 45 ? 0.75 : 0.45);
           s.x = ox; s.y = oy;
-          add({ kind: 'shot', w: 'mine', face, v: v - cost('mine'), retreat: face });
+          add({ kind: 'shot', w: 'mine', face, v, retreat: face });
         }
       }
-      // Sprengladung: Gegner in der Nähe, wir selbst können danach weg (geht erst im nächsten eigenen Zug hoch)
+      // Sprengladung: Gegner in der Nähe, wir selbst fahren in der Rückzugszeit weg (geht am Ende des Zuges hoch)
       if (avail('c4') && can(0.4)) {
         for (const face of [-1, 1]) {
-          const back = this.botWalk(t.x, t.y, -face, 150);
+          const back = this.botWalk(t.x, t.y, -face, 125); // so weit kommt man in 2,5 s Rückzug
           if (back.length < 90) continue;
           const s = ctx.self, ox = s.x, oy = s.y;
           s.x = back[back.length - 1].x; s.y = back[back.length - 1].y;
-          const v = this.botBlast(ctx, t.x + face * 22, t.y, BOOM.c4[0], BOOM.c4[1], 1) * 0.65; // Gegner können noch flüchten
+          const v = this.botBlast(ctx, t.x + face * 22, t.y, BOOM.c4[0], BOOM.c4[1], 1) * 0.95; // geht am Ende des Zuges hoch – Gegner können nicht mehr reagieren
           s.x = ox; s.y = oy;
-          if (v > 5) add({ kind: 'shot', w: 'c4', face, v: v - cost('c4'), retreat: -face });
+          if (v > 5) add({ kind: 'shot', w: 'c4', face, v, retreat: -face });
         }
       }
       // Reparatur
@@ -542,8 +566,11 @@
       }
       // Notlösung: ein Schuss Richtung nächster Gegner ist besser als nichts
       if (!opts.some((o) => o.v > 0) && foes.length) {
-        const e = foes.slice().sort((a, c) => Math.abs(a.x - t.x) - Math.abs(c.x - t.x))[0];
-        opts.push({ kind: 'shot', w: 'shell', face: e.x < t.x ? -1 : 1, aim: clamp(45 + gauss() * 8, 20, 70), power: clamp(55 + gauss() * 10, 30, 90), v: 0 });
+        if (near && (near.w === 'shell' || avail(near.w))) opts.push({ kind: 'shot', w: near.w === 'drill' && near.d < 150 ? 'drill' : 'shell', face: near.face, aim: aimNoise(near.aim), power: powNoise(near.pw), v: 0 });
+        else {
+          const e = foes.slice().sort((a, c) => Math.abs(a.x - t.x) - Math.abs(c.x - t.x))[0];
+          opts.push({ kind: 'shot', w: 'shell', face: e.x < t.x ? -1 : 1, aim: clamp(45 + gauss() * 8, 20, 70), power: clamp(55 + gauss() * 10, 30, 90), v: 0 });
+        }
       }
       return opts;
     }

@@ -24,7 +24,7 @@
     { id: 'skip',    name: 'Aussetzen',        short: 'AUSSETZEN',  ammo: -1, from: 1, mode: 'now',    info: 'Zug sofort beenden.' },
     // neue Waffen (Tasten Umschalt+1/2/3, damit 1–0 wie gewohnt bleiben)
     { id: 'napalm',  name: 'Napalm',           short: 'NAPALM',     ammo: 1,  from: 3, mode: 'fire',   info: 'Setzt den Boden in Brand. Das Feuer fließt hangabwärts, brennt 2 Runden und verletzt jeden, der darin steht. Wasser löscht.' },
-    { id: 'c4',      name: 'Sprengladung',     short: 'C4',         ammo: 1,  from: 2, mode: 'now',    info: 'Wird vor dir abgelegt und explodiert zu Beginn deines NÄCHSTEN Zuges – sehr stark. Gegner können flüchten oder sie wegsprengen.' },
+    { id: 'c4',      name: 'Sprengladung',     short: 'C4',         ammo: 1,  from: 2, mode: 'now',    info: 'Wird vor dir abgelegt und explodiert am Ende deines Zuges – sehr stark. Nutze die Rückzugszeit, um Abstand zu gewinnen!' },
     { id: 'nuke',    name: 'Atomgranate',      short: 'ATOM',       ammo: 0,  from: 5, mode: 'fire',   info: 'Riesiger Krater, alles in der Nähe fliegt weg. Gibt es nur selten aus Nachschub-Kisten – Abstand halten!' },
   ];
 

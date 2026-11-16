@@ -64,3 +64,5 @@ npm run lint    # ESLint: Tippfehler bei Namen, doppelte Methoden usw.
 ```
 
 Bei jedem Push laufen beide automatisch auf GitHub (Actions → „Prüfen“).
+
+**Balancing:** `node tools/balance.js` simuliert viele KI-Gefechte und misst Schaden pro Waffe, Treibstoff, Seilwinde, Kisten, Wasser usw. Ergebnisse und Begründung der Werte: [BALANCING.md](BALANCING.md).
