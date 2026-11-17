@@ -52,6 +52,31 @@
   const keys = { l: false, r: false, u: false, d: false, pu: false, pd: false };
   let overInfo = null, myTurn = false, lastTurnTank = 0, wantLeave = false;
   let reconnect = { active: false, tries: 0, timer: 0 };
+  // Handy/Tablet erkennen: Hauptzeiger ist ein Finger. Laptops mit Touchscreen (Hauptzeiger Maus/Touchpad)
+  // gelten NICHT als Touch-Gerät – am PC bleibt alles, wie es ist.
+  const mq = (q) => !!(window.matchMedia && matchMedia(q).matches);
+  const touchDev = !mq('(pointer: fine)') && (mq('(pointer: coarse)') || navigator.maxTouchPoints > 0);
+  const phoneDev = touchDev && Math.min(screen.width, screen.height) < 600;
+  document.body.classList.toggle('touch', touchDev);
+  document.body.classList.toggle('phone', phoneDev);
+  document.body.classList.toggle('tablet', touchDev && !phoneDev);
+  // Hinweise passend zum Gerät (Finger statt Maus)
+  const TXT = touchDev
+    ? { aimTip: 'Tipp: Finger auf den eigenen Panzer legen und ziehen = zielen', target: 'Ziel auf der Karte antippen', switchTip: 'Doppelt auf den eigenen Panzer tippen = Panzer wechseln' }
+    : { aimTip: 'Tipp: am eigenen Panzer mit der Maus ziehen = zielen', target: 'Ziel auf der Karte anklicken', switchTip: 'P oder Doppelklick auf Panzer = Panzer wechseln' };
+  // kurzes Vibrieren als Rückmeldung (nur Touch-Geräte, die es können)
+  const buzz = (ms) => { if (touchDev && navigator.vibrate) { try { navigator.vibrate(ms); } catch (e) { /* egal */ } } };
+  // Bildschirm im Gefecht nicht abdunkeln (Handy/Tablet)
+  let wakeLock = null;
+  async function keepAwake(on) {
+    if (!touchDev || !navigator.wakeLock) return;
+    try {
+      if (on && !wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); }
+      else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+    } catch (e) { wakeLock = null; }
+  }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && document.body.classList.contains('ingame')) keepAwake(true); });
+
   let myLook = { camo: 'oliv', hat: 'helm' };
   try { const l = JSON.parse(store.get('sf_look') || 'null'); if (l && l.camo === 'nacht') l.camo = 'splitter'; if (l && CAMO[l.camo]) myLook = l; } catch (e) { /* egal */ }
   if (myLook.hat === 'krone') myLook.hat = 'morion'; // Krone wurde durch den Morion ersetzt
@@ -63,6 +88,7 @@
   function show(id) {
     for (const s of screens) $(s).classList.toggle('hidden', s !== id);
     document.body.classList.toggle('ingame', id === 'hud');
+    keepAwake(id === 'hud');
     SND.music(id === 'hud' ? 'battle' : 'menu');
   }
   function toast(text, kind) {
@@ -952,9 +978,9 @@
       $('readout').style.opacity = needsAim ? '1' : '0.55';
       let hint = '';
       if (m.ph === 'retreat') hint = 'RÜCKZUG – schnell in Deckung!';
-      else if (wpn.mode === 'target') hint = 'Ziel auf der Karte anklicken';
-      else if (needsAim && !hudCache.dragTold) hint = 'Tipp: am eigenen Panzer mit der Maus ziehen = zielen';
-      else if (m.sw) hint = 'P oder Doppelklick auf Panzer = Panzer wechseln';
+      else if (wpn.mode === 'target') hint = TXT.target;
+      else if (needsAim && !hudCache.dragTold) hint = TXT.aimTip;
+      else if (m.sw) hint = TXT.switchTip;
       setHint(hint);
       if (!$('weaponMenu').classList.contains('hidden')) renderWeapons(m);
     } else {
@@ -1026,9 +1052,10 @@
   function fire() {
     if (!myTurn || !snapCur || snapCur.m.ph !== 'turn') return;
     const w = WMAP[snapCur.m.wp];
-    if (w.mode === 'target') { toast('Ziel auf der Karte anklicken', 'warn'); return; }
+    if (w.mode === 'target') { toast(TXT.target, 'warn'); return; }
     SND.unlock();
     send({ t: 'fire' });
+    buzz(25);
     cam.manualUntil = 0;
   }
   for (const b of document.querySelectorAll('#controls [data-k]')) {
@@ -1111,7 +1138,7 @@
     if (t && snapCur.m.ph === 'turn' && e.button === 0) {
       const w = WMAP[snapCur.m.wp];
       const [wx, wy] = toWorld(e.clientX, e.clientY);
-      if ((w.mode === 'fire' || w.mode === 'aim') && Math.hypot(wx - t.x, wy - t.y) < 26 / Math.min(1, zoomNow)) {
+      if ((w.mode === 'fire' || w.mode === 'aim') && Math.hypot(wx - t.x, wy - t.y) < (touchDev ? 44 : 26) / Math.min(1, zoomNow)) {
         aimDrag = { id: e.pointerId };
         hudCache.dragTold = true;
         canvas.style.cursor = 'crosshair';
@@ -1197,12 +1224,21 @@
   const firstTouch = () => { SND.unlock(); removeEventListener('pointerdown', firstTouch, true); removeEventListener('keydown', firstTouch, true); };
   addEventListener('pointerdown', firstTouch, true);
   addEventListener('keydown', firstTouch, true);
-  $('btnFull').addEventListener('click', () => {
+  function toggleFull() {
     const d = document.documentElement;
-    if (document.fullscreenElement) document.exitFullscreen();
-    else if (d.requestFullscreen) d.requestFullscreen().catch(() => toast('Vollbild nicht möglich', 'warn'));
-    $('gameMenu').classList.add('hidden');
-  });
+    const req = d.requestFullscreen || d.webkitRequestFullscreen;
+    if (document.fullscreenElement || document.webkitFullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    else if (req) {
+      Promise.resolve(req.call(d)).then(() => {
+        // Handy: im Vollbild quer festhalten (Android); iOS kann das nicht und ignoriert es
+        if (touchDev && screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {});
+      }).catch(() => toast('Vollbild nicht möglich', 'warn'));
+    }
+  }
+  $('btnFull').addEventListener('click', () => { toggleFull(); $('gameMenu').classList.add('hidden'); });
+  const canFull = !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
+  $('btnFull2').classList.toggle('hidden', !(touchDev && canFull));
+  $('btnFull2').addEventListener('click', toggleFull);
   const openHelp = () => $('help').classList.remove('hidden');
   $('btnHelp').addEventListener('click', openHelp);
   $('btnHelp2').addEventListener('click', () => { $('gameMenu').classList.add('hidden'); openHelp(); });
@@ -1238,6 +1274,8 @@
     const p = tankPos(m.id);
     if (!p) return;
     texts.push({ x: p[0], y: p[1] - 34, text: '-' + m.a, t: performance.now(), big: m.a >= 30 });
+    const info = G && G.tankInfo[m.id];
+    if (info && info.team === G.myTeam) buzz(m.a >= 30 ? [60, 40, 90] : 40);
     if (m.a >= 5) SND.metal(panOf(p[0]));
   }
   // Große Momente: Ansage, Zoom-Ruck, Fanfare (Zeitlupe kommt vom Gastgeber)

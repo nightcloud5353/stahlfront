@@ -437,3 +437,53 @@ body.finep #btnPad { display: block; align-self: flex-start; }
 }
 #dlg .card, #connecting .card { background: var(--panel-solid); }
 #dlg { background: rgba(10, 12, 8, 0.72); }
+
+/* ---------- Handy & Tablet (nur wenn ein Touch-Gerät erkannt wurde: body.touch) ----------
+   Am PC greift nichts davon. */
+.touchonly { display: none; }
+body.touch .touchonly { display: block; }
+body.touch .desktoponly { display: none; }
+/* Tastenbeschriftungen ergeben ohne Tastatur keinen Sinn */
+body.touch .cbtn kbd, body.touch .wbtn kbd { display: none; }
+/* Tippen statt Klicken: kein grauer Aufblitz-Kasten, kein Text markieren, kein Lupen-Menü */
+body.touch button, body.touch .mapcard, body.touch .chip { -webkit-tap-highlight-color: transparent; }
+/* Knöpfe reagieren sichtbar beim Drücken (statt Maus-Hover) */
+body.touch .cbtn:active:not(:disabled), body.touch .ibtn:active, body.touch .btn:active, body.touch .chip:active, body.touch .seg button:active, body.touch .mapcard:active { filter: brightness(1.35); transform: scale(.97); }
+/* Hover bleibt auf Touch sonst "kleben" */
+@media (hover: none) {
+  body.touch .btn:hover { border-color: var(--line); }
+  body.touch .cbtn:hover:not(:disabled) { border-color: var(--line); }
+  body.touch .mapcard:hover { border-color: var(--line-soft); }
+  body.touch .addbot button:hover { border-style: dashed; border-color: var(--line); }
+}
+/* größere Fingerflächen in Menüs */
+body.touch .chip { min-height: 44px; }
+body.touch .ibtn { width: 48px; height: 48px; }
+body.touch #topright { top: calc(8px + env(safe-area-inset-top)); }
+body.touch #topbar { top: calc(8px + env(safe-area-inset-top)); }
+/* Handy: Hinweis kleiner und mit Zeilenumbruch, damit er nicht über den Bildschirm hinausragt */
+body.phone #hint { white-space: normal; max-width: min(70vw, 520px); text-align: center; font-size: 13px; letter-spacing: .04em; }
+body.phone .toast { white-space: normal; max-width: 70vw; text-align: center; font-size: 14px; }
+/* Handy quer (niedrig): obere Leiste und Kacheln kompakter */
+@media (max-height: 480px) {
+  body.touch .ibtn { width: 42px; height: 42px; }
+  body.touch #turnInfo { font-size: 13px; padding: 3px 8px; }
+  body.touch #turnInfo #turnWho { font-size: 15px; }
+  body.touch #timer { min-width: 42px; font-size: 20px; }
+  body.touch #windBox { min-width: 76px; padding: 2px 8px; }
+  body.touch .mapcard { font-size: 11px; letter-spacing: 0; }
+  body.touch .mapcard span, body.touch .mapcard b { white-space: normal; overflow: visible; text-overflow: clip; }
+}
+/* Handy hoch: Knopfreihen dürfen umbrechen statt abgeschnitten zu werden */
+@media (max-width: 480px) {
+  body.touch .seg { grid-auto-flow: row; grid-template-columns: repeat(auto-fit, minmax(98px, 1fr)); }
+  body.touch .seg button { font-size: 14px; letter-spacing: .02em; }
+}
+/* Waffenmenü auf dem Handy: Felder füllen den Platz, Text nicht abschneiden */
+body.phone .wbtn { min-height: 64px; }
+/* Feuer-Knopf: Schriftzug passt ganz hinein */
+body.touch .cbtn.fire { width: calc(var(--btn) * 2.05); }
+/* Tablet: genug Platz – größere Steuerknöpfe für Daumen */
+body.tablet { --btn: 68px; --gap: 10px; }
+body.tablet .cbtn.fire { font-size: 28px; }
+body.tablet .cbtn svg { width: 30px; height: 30px; }
