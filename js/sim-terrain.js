@@ -5,11 +5,26 @@
 
   class SimTerrain {
     // Lauflängen-Kodierung als Paare [Wert, Anzahl, Wert, Anzahl, …]
+    // (lange gleiche Strecken werden in 4-Byte-Schritten übersprungen)
     rle() {
-      const m = this.mask, out = [];
-      let cur = m[0], n = 0;
-      for (let i = 0; i < m.length; i++) { if (m[i] === cur) n++; else { out.push(cur, n); cur = m[i]; n = 1; } }
-      out.push(cur, n);
+      const m = this.mask, len = m.length, out = [];
+      const m32 = len % 4 === 0 && m.byteOffset % 4 === 0 ? new Uint32Array(m.buffer, m.byteOffset, len >> 2) : null;
+      let i = 0;
+      while (i < len) {
+        const cur = m[i], start = i;
+        i++;
+        if (m32) {
+          while (i < len && (i & 3) && m[i] === cur) i++;
+          if (!(i & 3)) {
+            const word = cur * 0x01010101;
+            let w = i >> 2;
+            while (w < m32.length && m32[w] === word) w++;
+            i = w << 2;
+          }
+        }
+        while (i < len && m[i] === cur) i++;
+        out.push(cur, i - start);
+      }
       return out;
     }
     unrle(a) {
@@ -188,8 +203,13 @@
       if (x < 0 || x >= W || y < 0 || y >= H) return false;
       return this.mask[y * W + x] !== 0;
     }
+    // 16 Punkte auf dem Kreisrand + Mitte (gleiche Rechnung wie solid(), aber ohne Funktionsaufrufe)
     circleHits(x, y, r) {
-      for (let i = 0; i < 16; i++) if (this.solid(x + CIRC[i][0] * r, y + CIRC[i][1] * r)) return true;
+      const m = this.mask;
+      for (let i = 0; i < 16; i++) {
+        const px = Math.floor(x + CIRC[i][0] * r), py = Math.floor(y + CIRC[i][1] * r);
+        if (px >= 0 && px < W && py >= 0 && py < H && m[py * W + px] !== 0) return true;
+      }
       return this.solid(x, y);
     }
     normalAt(x, y, r) {
@@ -203,9 +223,13 @@
     }
     // alle Stellen in Spalte x, an denen ein Panzer stehen kann (Oberfläche, Höhlenböden, Brücken)
     floorsAt(x) {
-      const out = [];
-      for (let y = R + 2; y < this.g.waterY - 30; y++) {
-        if (!this.circleHits(x, y, R) && this.circleHits(x, y + 1, R)) { out.push(y); y += R * 2; }
+      const out = [], end = this.g.waterY - 30;
+      // circleHits(x, y + 1) ist im nächsten Schritt circleHits(x, y) – nur einmal rechnen
+      let hit = this.circleHits(x, R + 2, R);
+      for (let y = R + 2; y < end; y++) {
+        const below = this.circleHits(x, y + 1, R);
+        if (!hit && below) { out.push(y); y += R * 2; hit = this.circleHits(x, y + 1, R); }
+        else hit = below;
       }
       return out;
     }
@@ -230,6 +254,16 @@
       const LB = this.looseBuf, looseIdx = [];
       const mark = (i) => { if (!LB[i]) { LB[i] = 1; looseIdx.push(i); } };
       const L = (x, y) => LB[y * W + x] === 1;
+      // Erde, die schon zu einem noch nicht losgelassenen Brocken gehört, nicht ein zweites Mal erfassen
+      // (sonst fällt sie doppelt herunter, z. B. bei Streumunition oder Artillerieschlag)
+      const pend = [];
+      for (const gr of g.slides) {
+        if (gr.released) continue;
+        for (let k = 0; k < GRAIN * GRAIN; k++) if (gr.bits & (1 << k)) {
+          const i = (gr.y + ((k / GRAIN) | 0)) * W + gr.x + (k % GRAIN);
+          if (!LB[i]) { LB[i] = 2; pend.push(i); }
+        }
+      }
       let count = 0;
       // 1) dünne Überhänge (Erde mit Luft darunter)
       for (let x = x0; x <= x1; x++) {
@@ -248,10 +282,7 @@
           let fall = th <= SLIDE_THIN;
           // (frei schwebende Felsen ohne Stütze auf beiden Seiten gehören zur Karte und bleiben)
           if (!fall && th <= SLIDE_SPAN_TH) { const d = this.supportDist(x, bot); fall = d !== Infinity && d > Math.max(10, th * 2); }
-          if (fall) {
-            for (let k = top; k <= bot; k++) mark(k * W + x);
-            count += th;
-          }
+          if (fall) for (let k = top; k <= bot; k++) if (!LB[k * W + x]) { mark(k * W + x); count++; }
         }
       }
       // 2) kleine, freischwebende Brocken (nicht mehr mit dem Rest verbunden)
@@ -274,19 +305,21 @@
           if (comp.length > SLIDE_CHUNK) { ok = false; break; }
           const jx = j % W, jy = (j / W) | 0;
           if (jy >= H - 1) { ok = false; break; }
-          for (const n of [j - 1, j + 1, j - W, j + W]) {
-            const nx = n % W, ny = (n / W) | 0;
-            if (n < 0 || n >= W * H || Math.abs(nx - jx) > 1) continue;
+          // Nachbarn links, rechts, oben, unten (ohne Zeilenumbruch am Rand)
+          for (let q = 0; q < 4; q++) {
+            if ((q === 0 && jx === 0) || (q === 1 && jx === W - 1) || (q === 2 && jy === 0)) continue;
+            const n = q === 0 ? j - 1 : q === 1 ? j + 1 : q === 2 ? j - W : j + W;
             const v = m[n];
             if (v === 2) { ok = false; break; }
-            if (v !== 1 || vis[n] === stamp || L(nx, ny)) continue;
+            if (v !== 1 || vis[n] === stamp || LB[n] === 1) continue;
             vis[n] = stamp; stack.push(n);
           }
           if (!ok) break;
         }
-        if (ok) for (const j of comp) { mark(j); count++; }
+        if (ok) for (const j of comp) if (!LB[j]) { mark(j); count++; }
       }
-      if (!count) return;
+      for (const i of pend) LB[i] = 0;
+      if (!count) { for (const i of looseIdx) LB[i] = 0; return; }
       // 3) in Brocken zerlegen (Raster an festen 3er-Positionen, damit alle Pixel eines Brockens zusammenbleiben)
       const cells = new Map();
       for (const i of looseIdx) {
@@ -347,7 +380,11 @@
         if (!gr.released) {
           if (this.tickN < gr.rel) continue;
           gr.released = true;
-          for (let k = 0; k < GRAIN * GRAIN; k++) if (gr.bits & (1 << k)) { const i = (gr.y + ((k / GRAIN) | 0)) * W + gr.x + (k % GRAIN); if (m[i] === 1) m[i] = 0; }
+          // nur Erde mitnehmen, die noch da ist (inzwischen weggesprengte Teile fallen nicht mit)
+          let n = 0;
+          for (let k = 0; k < GRAIN * GRAIN; k++) if (gr.bits & (1 << k)) { const i = (gr.y + ((k / GRAIN) | 0)) * W + gr.x + (k % GRAIN); if (m[i] === 1) { m[i] = 0; n++; } }
+          gr.n = n;
+          if (!n) { gr.done = true; out.push(gr.id, gr.x, gr.y, 0); }
           continue;
         }
         gr.age++;
