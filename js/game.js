@@ -2030,4 +2030,26 @@
     if (store.get('sf_pw') === PW_HASH) $('gateErr').textContent = 'Neu: verschlüsselte Verbindung – bitte das Passwort einmal neu eingeben.';
     show('gate');
   }
+
+  // Zugang für die automatischen Browser-Tests (test/ui): nur mit ?test in der Adresse.
+  // Startet ein lokales Spiel ohne Netzwerk und Passwort (Gastgeber-Simulation im selben Browser).
+  if (new URLSearchParams(location.search).has('test')) {
+    window.__sfTest = {
+      localHost(name, look) {
+        const sim = new window.StahlSim();
+        const l = { send() {}, onmessage: null, onclose: null, close() { sim.destroy(); } };
+        const lc = { send(m) { Promise.resolve().then(() => { if (l.onmessage) l.onmessage(m); }); }, close() {} };
+        sim.onConnect(lc);
+        l.send = (m) => Promise.resolve().then(() => sim.onMessage(lc, m));
+        sim.code = 'TEST'; roomCode = 'TEST'; amHost = true;
+        attach(l);
+        l.send({ t: 'join', name: name || 'Test', look: look || myLook });
+        this.sim = sim;
+        return sim;
+      },
+      send: (m) => send(m),
+      get myLook() { return myLook; },
+      get inGame() { return !!G; },
+    };
+  }
 })();

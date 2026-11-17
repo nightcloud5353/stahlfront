@@ -5,11 +5,13 @@
   "description": "Rundenbasiertes Panzer-Artillerie-Spiel im Browser",
   "scripts": {
     "test": "node --test \"test/*.test.js\"",
+    "test:ui": "node --test --test-concurrency=1 \"test/ui/*.test.js\"",
     "lint": "eslint js/ test/",
-    "check": "npm run lint && npm test"
+    "check": "npm run lint && npm test && npm run test:ui"
   },
   "devDependencies": {
     "eslint": "^9.39.0",
-    "globals": "^15.15.0"
+    "globals": "^15.15.0",
+    "playwright": "1.63.0"
   }
 }

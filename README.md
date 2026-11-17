@@ -59,8 +59,10 @@ Zum Spielen ist nichts davon nötig – nur für die Entwicklung (Node.js 20 ode
 
 ```bash
 npm install
-npm test        # Simulation in Node: Lobby, Gelände, Schaden, Spielstand, komplette KI-Gefechte auf allen Karten
-npm run lint    # ESLint: Tippfehler bei Namen, doppelte Methoden usw.
+npm test          # Simulation in Node: Lobby, Gelände, Schaden, Spielstand, komplette KI-Gefechte auf allen Karten
+npm run test:ui   # Browser-Tests (Playwright/Chromium): Lobby, Panzer-Optik, Bedienung auf PC, Handy, Tablet
+npm run lint      # ESLint: Tippfehler bei Namen, doppelte Methoden usw.
+npm run check     # alles zusammen
 ```
 
-Bei jedem Push laufen beide automatisch auf GitHub (Actions → „Prüfen“).
+Bei jedem Push laufen alle automatisch auf GitHub (Actions → „Prüfen“). Regel: jede Änderung bekommt Tests – siehe `CLAUDE.md`.
