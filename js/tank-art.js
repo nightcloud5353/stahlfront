@@ -148,6 +148,7 @@
       }
       case 'barett': {
         // Barett: weich nach hinten gezogen, Lederband und goldenes Abzeichen vorn
+        c.translate(0, -3); c.scale(0.78, 0.78); c.translate(0, 3);
         c.fillStyle = hatGrad(c, -2, -7.5, 1, -3, ['#B33434', '#8A2020', '#5A1212']);
         c.beginPath();
         c.moveTo(4.2, -3.2);
