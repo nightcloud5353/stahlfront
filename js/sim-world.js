@@ -1,7 +1,7 @@
 // STAHLFRONT – Simulation: Panzer, Fässer, Kisten: Platzierung, Fahren und Physik. Wird in die Sim-Klasse (sim.js) eingemischt.
 (function (root) {
   'use strict';
-  const { W, PHYS, R, G, DRIVE_MAX, DRIVE_ACC, CLIMB, FUEL_COST, FALL_SAFE, FALL_DMG, MAX_HP, BARREL_R, CRATE_R, CRATE_HEAL, WMAP, rand, clamp, r1, shuffle, pick } = root.SimBase;
+  const { W, H, PHYS, R, G, DRIVE_MAX, DRIVE_ACC, CLIMB, FUEL_COST, FALL_SAFE, FALL_DMG, MAX_HP, BARREL_R, CRATE_R, CRATE_HEAL, WMAP, rand, clamp, r1, shuffle, pick } = root.SimBase;
 
   class SimWorld {
     // ---------- Panzer platzieren (fair verteilt) ----------
@@ -16,7 +16,21 @@
         prev = ts[ts.length - 1];
       }
       const n = order.length, margin = 150, span = (W - 2 * margin) / n;
-      const anyFloor = (x) => { const f = this.floorsAt(x); if (!f.length) return null; return g.map === 'hoehlen' ? pick(f) : f[0]; };
+      // Höhlen: in jeder Platzierungsrunde stehen alle Teams in derselben Ebene (alle oben oder alle in Höhlen),
+      // sonst sitzt ein Team geschützt im Tunnel und das andere offen auf der Oberfläche
+      const layers = order.map(() => null);
+      for (let k = 0; k < per; k++) {
+        // Höhlenrunde: alle Teams auf einen Tunnelboden in ähnlicher Tiefe
+        const depth = g.map === 'hoehlen' && Math.random() < 0.5 ? rand(H * 0.55, H * 0.75) : 0;
+        for (let j = 0; j < g.teams.length; j++) layers[k * g.teams.length + j] = depth;
+      }
+      const anyFloor = (x, depth) => {
+        const f = this.floorsAt(x);
+        if (!depth) return f.length ? f[0] : null;
+        // Höhlenrunde: nur Tunnelböden nahe der gewünschten Tiefe (sonst nächste Stelle probieren)
+        const c = f.slice(1).filter((y) => Math.abs(y - depth) < 110);
+        return c.length ? pick(c) : null;
+      };
       // fester Stand: Boden direkt unter der Mitte und links/rechts kaum Höhenunterschied
       // (sonst berührt der Panzer nur eine steile Flanke und rutscht sofort ab – z. B. an Inselrändern)
       const steady = (x, y) => {
@@ -24,20 +38,31 @@
         const yl = this.groundBelow(x - 9, y), yr = this.groundBelow(x + 9, y);
         return yl !== null && yr !== null && Math.abs(yl - yr) < 14;
       };
+      // Probe: bleibt ein Panzer hier 2 s lang stehen (rutscht nicht ab, fällt nicht ins Wasser)?
+      // Gibt die Ruheposition zurück oder null
+      const settles = (x, y) => {
+        const b = { id: 0, x, y, vx: 0, vy: 0, grounded: false, bounces: 0 };
+        for (let i = 0; i < 120; i++) {
+          b.id = i;
+          this.physics(b, R, null);
+          if (b.y > g.waterY - 45) return null;
+        }
+        return b.grounded && Math.hypot(b.x - x, b.y - y) < 8 ? [b.x, b.y] : null;
+      };
       order.forEach((team, i) => {
         let pos = null;
         for (let a = 0; a < 80 && !pos; a++) {
           const spread = a < 40 ? 0.3 : 0.5;
           const x = clamp(margin + span * (i + 0.5) + rand(-span * spread, span * spread), 110, W - 110);
-          const y = anyFloor(x);
+          const y = anyFloor(x, layers[i]);
           if (y === null || y > g.waterY - 45) continue;
           if (a < 60 && (!steady(x, y) || this.normalAt(x, y + R, 6)[1] > PHYS.SLIDE_NY)) continue;
           if (g.tanks.some((t) => Math.abs(t.x - x) < 70 && Math.abs(t.y - y) < 60)) continue;
-          pos = [x, y];
+          pos = settles(x, y);
         }
         for (let a = 0; a < 300 && !pos; a++) {
-          const x = rand(110, W - 110), y = anyFloor(x);
-          if (y !== null && y < g.waterY - 45 && (a >= 200 || steady(x, y)) && !g.tanks.some((t) => Math.abs(t.x - x) < 40 && Math.abs(t.y - y) < 40)) pos = [x, y];
+          const x = rand(110, W - 110), y = anyFloor(x, a < 100 ? layers[i] : 0);
+          if (y !== null && y < g.waterY - 45 && (a >= 200 || steady(x, y)) && !g.tanks.some((t) => Math.abs(t.x - x) < 40 && Math.abs(t.y - y) < 40)) pos = a >= 290 ? [x, y] : settles(x, y);
         }
         if (!pos) pos = [W / 2, 100];
         const t = {

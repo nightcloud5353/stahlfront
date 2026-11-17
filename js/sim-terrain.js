@@ -122,7 +122,8 @@
         this.fillHeights(hs);
         const n = 5 + Math.floor(rand(0, 3));
         for (let c = 0; c < n; c++) {
-          const x = rand(220, W - 220), y = rand(H * 0.45, H * 0.82);
+          // Tunnel gleichmäßig über die Breite verteilt (sonst hat eine Kartenseite kaum Deckung)
+          const x = 220 + ((W - 440) * (c + rand(0.1, 0.9))) / n, y = rand(H * 0.45, H * 0.82);
           let a = rand(-0.3, 0.3) + (Math.random() < 0.5 ? 0 : Math.PI);
           let cx = x, cy = y;
           const len = Math.floor(rand(18, 34));

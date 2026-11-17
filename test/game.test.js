@@ -138,3 +138,26 @@ test('Spielstand: speichern und fortsetzen ergibt dasselbe Gefecht', () => {
     assert.equal(globalThis.StahlSim.loadSave(), null);
   });
 });
+
+// Panzer dürfen nie schon vor dem ersten Schuss abrutschen oder ertrinken (früher: Inselkette mit vielen Panzern)
+for (const map of S.MAPS) {
+  test(`Start auf "${map.name}": alle Panzer stehen sicher`, () => {
+    for (let s = 0; s < 6; s++) withSeed(500 + s, () => {
+      const { sim } = startGame({ bots: 3, map: map.id, tanks: 2, spectatorHost: true });
+      const y0 = sim.g.tanks.map((t) => t.y);
+      for (let i = 0; i < 70; i++) sim.step();
+      sim.g.tanks.forEach((t, i) => {
+        assert.ok(!t.drowned && t.hp === 100, `Panzer ${i} unversehrt (Seed ${s})`);
+        assert.ok(Math.abs(t.y - y0[i]) < 10, `Panzer ${i} rutscht nicht ab (Seed ${s})`);
+      });
+    });
+  });
+}
+
+test('Höhlen: in jeder Runde stehen alle Teams in derselben Ebene', () => {
+  for (let s = 0; s < 10; s++) withSeed(800 + s, () => {
+    const { sim } = startGame({ bots: 4, map: 'hoehlen', tanks: 1, spectatorHost: true });
+    const inCave = sim.g.tanks.map((t) => sim.floorsAt(Math.round(t.x))[0] < t.y - 5);
+    assert.ok(inCave.every((c) => c === inCave[0]), `Seed ${s}: ${inCave}`);
+  });
+});
