@@ -215,56 +215,72 @@
         break;
       }
       case 'morion': {
-        // Morion wie bei der Schweizergarde: blanker Stahl mit Gravur, hoher Kamm, bootförmige Krempe,
-        // Messingnieten und ein großer roter Federbusch, der nach hinten fällt
-        const steel = hatGrad(c, -3, -9, 3, -3, ['#F2F5F7', '#B7C0C8', '#6D7882']);
-        // Kuppel
-        c.fillStyle = steel;
-        c.beginPath(); c.moveTo(-3.9, -3.8); c.bezierCurveTo(-4.1, -8.6, 4.3, -8.6, 4.1, -3.8); c.closePath(); c.fill();
-        c.strokeStyle = HAT_LINE; c.lineWidth = 0.45; c.stroke();
-        // Kamm wächst oben aus der Kuppel
-        c.fillStyle = steel;
-        c.beginPath(); c.moveTo(-2.7, -6.9); c.bezierCurveTo(-2.1, -10.9, 2.3, -10.9, 2.9, -6.9); c.quadraticCurveTo(0.1, -7.6, -2.7, -6.9); c.fill();
-        c.strokeStyle = HAT_LINE; c.lineWidth = 0.4;
-        c.beginPath(); c.moveTo(-2.7, -6.9); c.bezierCurveTo(-2.1, -10.9, 2.3, -10.9, 2.9, -6.9); c.stroke();
-        c.strokeStyle = 'rgba(60,70,80,.4)'; c.lineWidth = 0.25;
-        c.beginPath(); c.moveTo(-1.8, -7.3); c.bezierCurveTo(-1.3, -9.8, 1.5, -9.8, 2, -7.3); c.stroke();
-        // Messingnieten am Kuppelrand
-        c.fillStyle = '#E0B23A'; c.strokeStyle = 'rgba(90,60,10,.6)'; c.lineWidth = 0.15;
-        for (const nx of [-2.6, -0.9, 0.8, 2.5]) { c.beginPath(); c.arc(nx + 0.1, -4.5, 0.32, 0, 6.283); c.fill(); c.stroke(); }
-        hatShine(c, -1.8, -6.3, 1.1, 0.45, -0.5, 0.6);
-        hatShine(c, -0.6, -9.3, 0.7, 0.25, -0.3, 0.55);
-        // Gravur (Rankenornament) auf der Kuppel
-        c.strokeStyle = 'rgba(150,125,60,.4)'; c.lineWidth = 0.18;
-        c.beginPath(); c.moveTo(-2.6, -5.2); c.quadraticCurveTo(-1.6, -6.6, -0.2, -5.6); c.quadraticCurveTo(1.2, -4.8, 2.6, -6); c.stroke();
-        for (const [lx, ly] of [[-1.6, -6.1], [1.3, -5.3]]) { c.beginPath(); c.ellipse(lx, ly, 0.45, 0.22, -0.6, 0, 6.283); c.stroke(); }
-        // Federbusch: steckt hinten im Kamm, steigt auf und fällt nach hinten
-        const puffs = [[-2.2, -10.6, 1.3], [-3, -11.8, 1.5], [-4.3, -12.2, 1.5], [-5.6, -11.7, 1.4], [-6.6, -10.6, 1.3], [-7.2, -9.3, 1.15], [-7.4, -8, 1], [-3.8, -10.6, 1.3], [-5.4, -10.3, 1.2], [-6.3, -9, 1]];
-        c.fillStyle = '#8E141B';
-        for (const [px, py, pr] of puffs) { c.beginPath(); c.arc(px, py + 0.25, pr + 0.25, 0, 6.283); c.fill(); }
-        puffs.forEach(([px, py, pr], i) => {
-          c.fillStyle = ['#D8262E', '#C21D25', '#E4383F'][i % 3];
+        // Morion der Schweizergarde: bläulich polierter Stahl mit Relief, Rosettenband, Krempe hinten hoch und spitz,
+        // obenauf ein großer roter Federbusch, der wie ein Kamm von vorn bis hinten über den Helm läuft
+        const steel = hatGrad(c, -3, -9.5, 3.5, -3.5, ['#E3EAF2', '#8E9DB3', '#4A566B']);
+        // Federbusch (hinter der Helmkuppel)
+        const cx0 = -0.3, cy0 = -8.2;
+        const ring = [];
+        for (let k = 0; k <= 13; k++) {
+          const a = (-182 + k * 12.6) * Math.PI / 180, j = prand(k * 7.3);
+          ring.push([cx0 + Math.cos(a) * (5.5 + j * 0.6), cy0 + Math.sin(a) * (5 + j * 0.5) + (j - 0.5) * 0.4, 1.2 + 0.5 * Math.sin((k / 13) * Math.PI) + prand(k * 3.1) * 0.5]);
+        }
+        c.fillStyle = '#7E1016';
+        for (const [px, py, pr] of ring) { c.beginPath(); c.arc(px, py + 0.3, pr + 0.3, 0, 6.283); c.fill(); }
+        c.beginPath(); c.ellipse(cx0, cy0, 5.2, 4.3, 0, Math.PI, 0); c.fill();
+        ring.forEach(([px, py, pr], i) => {
+          c.fillStyle = ['#D8222B', '#C21820', '#E8343C', '#CC1C24'][i % 4];
           c.beginPath(); c.arc(px, py, pr, 0, 6.283); c.fill();
         });
-        // Federkiele/Strähnen
-        c.strokeStyle = 'rgba(255,200,200,.55)'; c.lineWidth = 0.22;
-        for (const [x0, y0, x1, y1, cx, cy] of [[-2, -9.6, -4.2, -12.6, -2.6, -12], [-2.2, -9.4, -6, -11.6, -4, -11.8], [-2.4, -9.2, -7.2, -9, -5.6, -10.8], [-2.6, -9, -7.5, -7.6, -6.2, -9.4]]) {
-          c.beginPath(); c.moveTo(x0, y0); c.quadraticCurveTo(cx, cy, x1, y1); c.stroke();
+        c.fillStyle = '#CF1E27'; c.beginPath(); c.ellipse(cx0, cy0, 4.8, 3.9, 0, Math.PI, 0); c.fill();
+        // Straußenfedern: viele feine Strähnen, die über den Rand hinaus ausfransen
+        c.lineWidth = 0.2;
+        for (let k = 0; k < 40; k++) {
+          const a = (-184 + k * 4.6 + prand(k) * 3) * Math.PI / 180, r0 = 1.4 + prand(k + 9) * 1.5, r1 = 6.6 + prand(k + 3) * 1.6;
+          c.strokeStyle = ['rgba(255,140,140,.55)', 'rgba(120,10,15,.5)', 'rgba(232,52,60,.9)'][k % 3];
+          const bend = (prand(k + 21) - 0.3) * 0.35;
+          c.beginPath();
+          c.moveTo(cx0 + Math.cos(a) * r0, cy0 + Math.sin(a) * r0 * 0.9);
+          c.quadraticCurveTo(cx0 + Math.cos(a + bend) * r1 * 0.7, cy0 + Math.sin(a + bend) * r1 * 0.62, cx0 + Math.cos(a + bend * 0.6) * r1, cy0 + Math.sin(a + bend * 0.6) * r1 * 0.84);
+          c.stroke();
         }
-        hatShine(c, -3.6, -12.4, 0.9, 0.35, -0.2, 0.35);
-        // Federhalter am Kamm
-        c.fillStyle = '#E0B23A'; c.strokeStyle = 'rgba(90,60,10,.6)'; c.lineWidth = 0.2;
-        c.beginPath(); c.ellipse(-2, -9.1, 0.5, 0.7, 0.4, 0, 6.283); c.fill(); c.stroke();
-        // Krempe: vorn und hinten spitz nach oben
-        c.fillStyle = hatGrad(c, 0, -5.6, 0, -2.8, ['#E3E9EE', '#8A949D']);
+        hatShine(c, -1.4, -12.4, 1.6, 0.45, -0.1, 0.3);
+        // Kuppel mit Kamm
+        c.fillStyle = steel;
+        c.beginPath(); c.moveTo(-3.9, -3.9);
+        c.bezierCurveTo(-4.4, -7.2, -2.6, -9.2, 0.2, -9.2);
+        c.bezierCurveTo(3, -9.2, 4.6, -7, 4.1, -3.9);
+        c.closePath(); c.fill();
+        c.strokeStyle = HAT_LINE; c.lineWidth = 0.45; c.stroke();
+        // Relief: Ranken und Blätter um einen Stamm
+        c.strokeStyle = 'rgba(40,50,70,.4)'; c.lineWidth = 0.2;
+        c.beginPath(); c.moveTo(0.9, -4.9); c.lineTo(0.9, -7.6); c.stroke();
+        for (const [lx, ly, rot] of [[0.3, -7, -0.7], [1.5, -6.8, 0.7], [0.3, -6, -0.5], [1.5, -5.8, 0.5]]) { c.beginPath(); c.ellipse(lx, ly, 0.45, 0.22, rot, 0, 6.283); c.stroke(); }
+        c.beginPath(); c.moveTo(-2.8, -5.2); c.quadraticCurveTo(-1.8, -7.6, -0.4, -6.9); c.stroke();
+        c.strokeStyle = 'rgba(255,255,255,.4)'; c.lineWidth = 0.18;
+        c.beginPath(); c.moveTo(1.1, -5); c.lineTo(1.1, -7.5); c.stroke();
+        // Rosettenband über der Krempe
+        c.strokeStyle = 'rgba(40,50,70,.6)'; c.lineWidth = 0.25;
+        c.beginPath(); c.moveTo(-3.8, -4.6); c.quadraticCurveTo(0.2, -5.3, 4, -4.6); c.stroke();
+        for (const nx of [-3, -1.5, 0, 1.5, 3]) {
+          const ny = -4.65 - 0.5 * (1 - (nx / 4) * (nx / 4));
+          c.fillStyle = '#B9C4D2'; c.beginPath(); c.arc(nx + 0.2, ny, 0.36, 0, 6.283); c.fill();
+          c.fillStyle = '#4A566B'; c.beginPath(); c.arc(nx + 0.2, ny, 0.14, 0, 6.283); c.fill();
+        }
+        hatShine(c, -2, -7.2, 1.1, 0.4, -0.7, 0.65);
+        hatShine(c, 2.6, -6, 0.3, 0.9, 0.3, 0.3);
+        // Krempe: hinten hoch und spitz, vorn flacher
+        c.fillStyle = hatGrad(c, -6, -8, 6, -3, ['#2E3646', '#8E9DB3', '#C9D3E0', '#5A667A']);
         c.beginPath();
-        c.moveTo(-6.1, -6.7);
-        c.quadraticCurveTo(-4.8, -2.6, 0.2, -2.85);
-        c.quadraticCurveTo(5.2, -2.6, 6.3, -6.9);
-        c.quadraticCurveTo(4.6, -3.9, 0.2, -3.85);
-        c.quadraticCurveTo(-4.3, -3.9, -6.1, -6.7);
+        c.moveTo(-6.3, -8.6);
+        c.quadraticCurveTo(-5.4, -3, 0.2, -2.85);
+        c.quadraticCurveTo(5.4, -2.7, 6.9, -6);
+        c.quadraticCurveTo(4.8, -3.9, 0.2, -3.85);
+        c.quadraticCurveTo(-4.6, -4, -6.3, -8.6);
         c.closePath(); c.fill();
         c.strokeStyle = HAT_LINE; c.lineWidth = 0.4; c.stroke();
+        c.strokeStyle = 'rgba(255,255,255,.45)'; c.lineWidth = 0.2;
+        c.beginPath(); c.moveTo(-1.5, -3.15); c.quadraticCurveTo(2.5, -3, 5, -3.6); c.stroke();
         break;
       }
       case 'horn': {
