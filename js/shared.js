@@ -57,14 +57,29 @@
 
   // Tarnmuster (Panzer gestalten)
   const CAMOS = [
-    { id: 'oliv',   name: 'Oliv',    base: '#5E6B3A', turret: '#6A7744', dark: '#2F3520', spot: '#47522B', pat: 'spots' },
-    { id: 'wald',   name: 'Wald',    base: '#4E5E34', turret: '#5A6B3C', dark: '#26301A', spot: '#6B5534', pat: 'blobs' },
-    { id: 'wueste', name: 'Wüste',   base: '#B49A6A', turret: '#C2A878', dark: '#5E4E34', spot: '#9C7F52', pat: 'blobs' },
-    { id: 'winter', name: 'Winter',  base: '#C9CED2', turret: '#D8DCDF', dark: '#4A5156', spot: '#8E979C', pat: 'blobs' },
-    { id: 'stadt',  name: 'Stadt',   base: '#6F747A', turret: '#7D8288', dark: '#2E3236', spot: '#4E5358', pat: 'digital' },
-    { id: 'tiger',  name: 'Tiger',   base: '#B5853E', turret: '#C29149', dark: '#3A2A14', spot: '#3A2A14', pat: 'stripes' },
-    { id: 'nacht',  name: 'Nacht',   base: '#2E3238', turret: '#383D44', dark: '#121417', spot: '#23262B', pat: 'spots' },
-    { id: 'einhorn', name: 'Einhorn', base: '#F28DC0', turret: '#F7A8D1', dark: '#7A2E5A', spot: '#FFFFFF', pat: 'unicorn',
+    // Vorbilder aus der Wirklichkeit (Farben nach RAL/FS, für den Bildschirm leicht aufgehellt) – außer dem Einhorn
+    { id: 'oliv', name: 'Oliv', info: 'NATO-Gelboliv (RAL 6014), einfarbig – so fuhr die Bundeswehr bis 1984',
+      base: '#56563A', turret: '#5F6042', cols: [], pat: 'uni', swatch: '#56563A' },
+    { id: 'wald', name: 'Wald', info: 'Bundeswehr-Dreifarbtarn (seit 1984): Bronzegrün, Lederbraun, Teerschwarz',
+      base: '#4A563D', turret: '#525F44', cols: ['#5E4A38', '#232521'], pat: 'nato',
+      swatch: 'linear-gradient(135deg, #4A563D 0 40%, #5E4A38 40% 70%, #232521 70%)' },
+    { id: 'wueste', name: 'Wüste', info: 'Wüstentarn: Sandbeige mit Sandbraun und Graugrün',
+      base: '#C3A979', turret: '#CDB383', cols: ['#937252', '#6E6D51'], pat: 'desert',
+      swatch: 'linear-gradient(135deg, #C3A979 0 50%, #937252 50% 78%, #6E6D51 78%)' },
+    { id: 'winter', name: 'Winter', info: 'Winter-Kalkanstrich über Oliv – abwaschbar, mit der Zeit abgewetzt',
+      base: '#E2E5E1', turret: '#EAEDE9', cols: ['#5E6342', '#A6ABA2'], pat: 'whitewash',
+      swatch: 'linear-gradient(135deg, #E2E5E1 0 62%, #A6ABA2 62% 78%, #5E6342 78%)' },
+    { id: 'stadt', name: 'Berlin', info: 'Stadttarn der US-Berlin-Brigade (1980er): eckige Flächen in Hell-, Mittel- und Dunkelgrau',
+      base: '#808487', turret: '#888C8F', cols: ['#C6C7C2', '#3C3E42'], pat: 'berlin',
+      swatch: 'linear-gradient(135deg, #C6C7C2 0 34%, #808487 34% 67%, #3C3E42 67%)' },
+    { id: 'tiger', name: 'Tiger', info: 'Dreifarbtarnung 1943: Dunkelgelb mit Olivgrün und Rotbraun, dazu Hinterhalt-Punkte',
+      base: '#BF9F5E', turret: '#C8A866', cols: ['#4F5637', '#6B3F2B', '#D6B978'], pat: 'tiger',
+      swatch: 'linear-gradient(135deg, #BF9F5E 0 40%, #4F5637 40% 70%, #6B3F2B 70%)' },
+    { id: 'splitter', name: 'Splitter', info: 'Schwedischer Splittertarn M90 (CV90, Strv 122): kantige Splitter in Grün und Schwarz',
+      base: '#7F8C5F', turret: '#879566', cols: ['#4F5F39', '#2C3725', '#1C1E19'], pat: 'splitter',
+      swatch: 'linear-gradient(135deg, #7F8C5F 0 34%, #4F5F39 34% 60%, #2C3725 60% 82%, #1C1E19 82%)' },
+    { id: 'einhorn', name: 'Einhorn', info: 'Garantiert nicht aus dem Dienstvorschriften-Handbuch',
+      base: '#F28DC0', turret: '#F7A8D1', cols: ['#FFFFFF'], pat: 'unicorn',
       swatch: 'linear-gradient(135deg, #F28DC0 0 45%, #FFC27A 45% 55%, #FFF08A 55% 65%, #9EEBB0 65% 75%, #8FD3FF 75% 85%, #C3A6FF 85%)' },
   ];
   // Kopfbedeckung des Klecks-Kommandanten

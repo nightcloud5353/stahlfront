@@ -94,8 +94,8 @@
   const CIRC = [];
   for (let i = 0; i < 16; i++) { const a = (i / 16) * Math.PI * 2; CIRC.push([Math.cos(a), Math.sin(a)]); }
   const noInput = () => ({ l: false, r: false, u: false, d: false, pu: false, pd: false });
-  // ältere Spielstände/Clients: die Krone wurde durch den Morion ersetzt
-  const validLook = (l) => (l && l.hat === 'krone' ? validLook(Object.assign({}, l, { hat: 'morion' })) : {
+  // ältere Spielstände/Clients: Krone -> Morion, Nacht-Tarnung -> Splitter
+  const validLook = (l) => (l && (l.hat === 'krone' || l.camo === 'nacht') ? validLook(Object.assign({}, l, l.hat === 'krone' ? { hat: 'morion' } : {}, l.camo === 'nacht' ? { camo: 'splitter' } : {})) : {
     camo: S.CAMOS.some((c) => c.id === (l && l.camo)) ? l.camo : 'oliv',
     hat: S.HATS.some((h) => h.id === (l && l.hat)) ? l.hat : 'none',
   });

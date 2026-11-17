@@ -23,14 +23,107 @@
     return `rgb(${k(r)},${k(g)},${k(b)})`;
   }
   function tkPoly(c, pts) { c.beginPath(); pts.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); c.closePath(); }
-  function tkCamo(c, cm, x0, y0, x1, y1, seed) {
-    const w = x1 - x0, h = y1 - y0;
-    c.fillStyle = cm.spot; c.strokeStyle = cm.spot;
-    if (cm.pat === 'spots') for (let i = 0; i < Math.ceil(w / 6); i++) { c.beginPath(); c.ellipse(x0 + prand(seed + i) * w, y0 + prand(seed + i + 40) * h, 1.6 + prand(seed + i + 9) * 2.6, 0.8 + prand(seed + i + 3) * 1.1, prand(i) * 0.6, 0, 6.283); c.fill(); }
-    else if (cm.pat === 'blobs') for (let i = 0; i < Math.ceil(w / 5); i++) { c.beginPath(); c.ellipse(x0 + prand(seed + i) * w, y0 + prand(seed + i + 40) * h, 2 + prand(seed + i + 9) * 3, 1 + prand(seed + i + 3) * 1.4, prand(i + 7) * 3, 0, 6.283); c.fill(); }
-    else if (cm.pat === 'digital') for (let i = 0; i < Math.ceil(w * h / 7); i++) c.fillRect(Math.round((x0 + prand(seed + i) * w) * 2) / 2, Math.round((y0 + prand(seed + i + 70) * h) * 2) / 2, 0.9, 0.9);
-    else if (cm.pat === 'unicorn') tkUnicorn(c, x0, y0, x1, y1, seed);
-    else if (cm.pat === 'stripes') { c.lineWidth = 0.9; for (let x = x0 - 6; x < x1 + 6; x += 3.2 + prand(seed + x) * 1.6) { c.beginPath(); c.moveTo(x, y0); c.lineTo(x - 2.5 + prand(x) * 2, y1); c.stroke(); } }
+  // Tarnmuster in Modellkoordinaten des ganzen Panzers (x -27..27, y -24..0): so laufen die Flecken
+  // über Wanne, Schürzen und Turm durch wie bei einem echten Anstrich. tid = Panzer-ID (eigenes Muster je Panzer)
+  function tkBlob(c, cx, cy, rx, ry, rot, seed, n) {
+    const cs = Math.cos(rot), sn = Math.sin(rot);
+    c.beginPath();
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * 6.283, k = 0.62 + prand(seed + i * 1.7) * 0.55;
+      const x = Math.cos(a) * rx * k, y = Math.sin(a) * ry * k;
+      c.lineTo(cx + x * cs - y * sn, cy + x * sn + y * cs);
+    }
+    c.closePath(); c.fill();
+  }
+  function tkCamo(c, cm, tid) {
+    const sd = (tid || 1) * 97.13, cols = cm.cols;
+    const X0 = -27, X1 = 27, Y0 = -24, Y1 = 0;
+    switch (cm.pat) {
+      case 'uni': {
+        // einfarbig: nur leichte Laufspuren von Regen und Staub
+        c.strokeStyle = 'rgba(30,28,18,.16)'; c.lineWidth = 0.5;
+        for (let i = 0; i < 14; i++) { const x = X0 + prand(sd + i) * (X1 - X0), y = Y0 + prand(sd + i + 30) * 16; c.beginPath(); c.moveTo(x, y); c.lineTo(x + 0.3, y + 2 + prand(sd + i + 60) * 4); c.stroke(); }
+        break;
+      }
+      case 'nato': {
+        // Bundeswehr-Dreifarbtarn: große, hart abgegrenzte, schräg liegende Flecken – etwa je ein Drittel Grün, Braun, Schwarz
+        for (let i = 0; i < 24; i++) {
+          c.fillStyle = cols[i % 5 === 1 || i % 5 === 3 ? 1 : 0];
+          const x = X0 - 4 + ((i + prand(sd + i)) / 24) * (X1 - X0 + 8), y = Y0 + 2 + prand(sd + i + 40) * 22;
+          tkBlob(c, x, y, 4.2 + prand(sd + i + 7) * 3, 2.4 + prand(sd + i + 9) * 1.8, -0.55 + prand(sd + i + 3) * 0.4, sd + i * 13, 9);
+        }
+        break;
+      }
+      case 'desert': {
+        // Wüste: wenige große, weiche Flecken
+        for (let i = 0; i < 10; i++) {
+          c.fillStyle = cols[i % 3 === 2 ? 1 : 0];
+          const x = X0 + ((i + prand(sd + i)) / 10) * (X1 - X0 + 4) - 2, y = Y0 + 5 + prand(sd + i + 40) * 17;
+          tkBlob(c, x, y, 3.8 + prand(sd + i + 7) * 2.4, 2 + prand(sd + i + 9) * 1.2, -0.3 + prand(sd + i + 3) * 0.6, sd + i * 11, 12);
+        }
+        break;
+      }
+      case 'whitewash': {
+        // Kalkanstrich: Oliv scheint an abgewetzten Stellen durch, dazu senkrechte Pinselspuren
+        for (let i = 0; i < 9; i++) {
+          c.fillStyle = cols[0]; c.globalAlpha = 0.55 + prand(sd + i + 5) * 0.35;
+          tkBlob(c, X0 + prand(sd + i) * (X1 - X0), Y0 + 6 + prand(sd + i + 40) * 16, 1.6 + prand(sd + i + 7) * 2.2, 0.9 + prand(sd + i + 9) * 1.1, prand(sd + i) * 3, sd + i * 17, 10);
+        }
+        c.globalAlpha = 1;
+        c.lineWidth = 0.35;
+        for (let i = 0; i < 46; i++) {
+          c.strokeStyle = i % 3 ? 'rgba(166,171,162,.5)' : 'rgba(94,99,66,.35)';
+          const x = X0 + prand(sd + i + 100) * (X1 - X0), y = Y0 + prand(sd + i + 130) * 22;
+          c.beginPath(); c.moveTo(x, y); c.lineTo(x + (prand(sd + i) - 0.5) * 0.8, y + 1.5 + prand(sd + i + 160) * 3.5); c.stroke();
+        }
+        break;
+      }
+      case 'berlin': {
+        // Berlin-Stadttarn: große eckige Flächen mit geraden Kanten, Hell- und Dunkelgrau auf Mittelgrau
+        for (let i = 0; i < 26; i++) {
+          c.fillStyle = cols[i % 2];
+          const x = X0 - 4 + ((i + prand(sd + i)) / 26) * (X1 - X0 + 6), y = Y0 + 1 + prand(sd + i + 40) * 22;
+          const w = 4 + prand(sd + i + 7) * 6, h = 3 + prand(sd + i + 9) * 5, sk = (prand(sd + i + 3) - 0.5) * 4;
+          c.beginPath(); c.moveTo(x, y); c.lineTo(x + w, y + sk * 0.25); c.lineTo(x + w + sk, y + h); c.lineTo(x + sk * 0.3, y + h * 0.85); c.closePath(); c.fill();
+        }
+        break;
+      }
+      case 'tiger': {
+        // Dreifarbtarnung 1943: unregelmäßige, schräg geschwungene Streifen in Olivgrün und Rotbraun
+        // (unterbrochen, mal breit, mal schmal), darauf hellgelbe Hinterhalt-Punkte
+        c.lineCap = 'round'; c.lineJoin = 'round';
+        for (let i = 0; i < 18; i++) {
+          c.strokeStyle = cols[i % 2]; c.lineWidth = 1 + prand(sd + i + 5) * 1.8;
+          const x = X0 - 2 + ((i + prand(sd + i)) / 18) * (X1 - X0 + 6), ph = prand(sd + i + 9) * 6;
+          const ya = Y0 + prand(sd + i + 11) * 8, yb = ya + 8 + prand(sd + i + 13) * 14;
+          c.beginPath();
+          for (let y = ya; y <= yb; y += 1.5) c.lineTo(x + Math.sin(y * 0.45 + ph) * 1.4 - (y - Y0) * 0.35, y);
+          c.stroke();
+        }
+        c.lineCap = 'butt'; c.lineJoin = 'miter';
+        c.fillStyle = cols[2];
+        for (let i = 0; i < 40; i++) { c.beginPath(); c.arc(X0 + prand(sd + i + 200) * (X1 - X0), Y0 + prand(sd + i + 230) * 24, 0.3 + prand(sd + i) * 0.22, 0, 6.283); c.fill(); }
+        break;
+      }
+      case 'splitter': {
+        // Schwedischer M90-Splittertarn: spitze, kantige Splitter
+        for (let i = 0; i < 26; i++) {
+          c.fillStyle = cols[i % 5 === 4 ? 2 : i % 2];
+          const x = X0 - 2 + ((i + prand(sd + i)) / 26) * (X1 - X0 + 4), y = Y0 + 2 + prand(sd + i + 40) * 20;
+          const a = prand(sd + i + 3) * 3.14, l = 4 + prand(sd + i + 7) * 5, w = 1.4 + prand(sd + i + 9) * 2;
+          const ca = Math.cos(a), sa = Math.sin(a);
+          c.beginPath();
+          c.moveTo(x - ca * l, y - sa * l);
+          c.lineTo(x - sa * w + ca * 0.6, y + ca * w + sa * 0.6);
+          c.lineTo(x + ca * l * 0.8, y + sa * l * 0.8);
+          c.lineTo(x + sa * w * 0.7, y - ca * w * 0.7);
+          c.closePath(); c.fill();
+        }
+        break;
+      }
+      case 'unicorn': tkUnicorn(c, X0, Y0 + 6, X1, Y1, sd); break;
+      default:
+    }
   }
   // Einhorn-Tarnung: Regenbogen-Bogen, Glitzersterne und kleine Herzen
   const RAINBOW = ['#FF7FAF', '#FFB86B', '#FFE97A', '#8FE3A6', '#7FC8FF', '#B79BFF'];
@@ -67,7 +160,7 @@
     for (const [x, y] of pts) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
     tkPoly(c, pts); c.fillStyle = col; c.fill();
     c.save(); tkPoly(c, pts); c.clip();
-    if (cm.spot && o.camo !== false) tkCamo(c, cm, x0, y0, x1, y1, o.seed || 1);
+    if (cm.pat && o.camo !== false) tkCamo(c, cm, o.tid);
     let g = c.createLinearGradient(0, y0, 0, y1);
     g.addColorStop(0, 'rgba(255,250,225,.30)'); g.addColorStop(0.35, 'rgba(255,250,225,.04)'); g.addColorStop(1, 'rgba(0,0,0,.28)');
     c.fillStyle = g; c.fillRect(x0 - 1, y0 - 1, x1 - x0 + 2, y1 - y0 + 2);
@@ -392,8 +485,8 @@
     tkSprocket(c, -20.5, -4.3, 2.9, rot);
     tkWheel(c, 20.8, -4.6, 2.6, rot, 5);
     for (let i = 0; i < 6; i++) tkWheel(c, -14.6 + i * 5.9, -3.6, 3.05, rot, 6);
-    tkPlate(c, TK_DECK, tkShade(cm.base, -0.12), cm, { seed: (t.id || 1) * 3 });
-    tkPlate(c, TK_SKIRT, cm.base, cm, { seed: (t.id || 1) * 7, dirt: 2.4 });
+    tkPlate(c, TK_DECK, tkShade(cm.base, -0.12), cm, { tid: t.id });
+    tkPlate(c, TK_SKIRT, cm.base, cm, { tid: t.id, dirt: 2.4 });
     c.strokeStyle = 'rgba(20,22,14,.55)'; c.lineWidth = 0.3;
     for (let x = -16.5; x < 22; x += 8) { c.beginPath(); c.moveTo(x, -11.1); c.lineTo(x, -5.7); c.stroke(); }
     tkRivets(c, -23.5, 21, -10.3, 2.6);
@@ -427,7 +520,7 @@
 
     // 3) Turm mit Zielgerät, Nebelwerfern, Luke und Kommandant
     c.save(); c.translate(0, 10); c.scale(face * TK, TK);
-    tkPlate(c, TK_TURRET, cm.turret, cm, { seed: (t.id || 1) * 11, edgeA: 3, edgeB: 4 });
+    tkPlate(c, TK_TURRET, cm.turret, cm, { tid: t.id, edgeA: 3, edgeB: 4 });
     c.strokeStyle = 'rgba(20,22,14,.5)'; c.lineWidth = 0.3; c.beginPath(); c.moveTo(-15.5, -16.4); c.lineTo(14.8, -16.4); c.stroke();
     if (alive) { c.fillStyle = band; c.fillRect(-9, -16.1, 10, 1.3); }
     c.fillStyle = tkShade(cm.turret, -0.25); c.fillRect(3, -22.3, 4.4, 1.8); c.fillStyle = alive ? '#9bc7d6' : '#2a2a26'; c.fillRect(6.6, -22, 0.7, 1.1);

@@ -53,7 +53,7 @@
   let overInfo = null, myTurn = false, lastTurnTank = 0, wantLeave = false;
   let reconnect = { active: false, tries: 0, timer: 0 };
   let myLook = { camo: 'oliv', hat: 'helm' };
-  try { const l = JSON.parse(store.get('sf_look') || 'null'); if (l && CAMO[l.camo]) myLook = l; } catch (e) { /* egal */ }
+  try { const l = JSON.parse(store.get('sf_look') || 'null'); if (l && l.camo === 'nacht') l.camo = 'splitter'; if (l && CAMO[l.camo]) myLook = l; } catch (e) { /* egal */ }
   if (myLook.hat === 'krone') myLook.hat = 'morion'; // Krone wurde durch den Morion ersetzt
   let muted = store.get('sf_mute') === '1';
   let aimDrag = null;
@@ -535,7 +535,7 @@
       for (const it of list) {
         const b = document.createElement('button');
         b.className = 'chip' + (it.id === cur ? ' on' : '');
-        if (key === 'camo') { const sw = document.createElement('i'); sw.style.background = it.swatch || `linear-gradient(135deg, ${it.base} 50%, ${it.spot} 50%)`; b.appendChild(sw); }
+        if (key === 'camo') { const sw = document.createElement('i'); sw.style.background = it.swatch; b.appendChild(sw); b.title = it.info; }
         b.appendChild(document.createTextNode(it.name));
         b.addEventListener('click', () => {
           SND.click();
