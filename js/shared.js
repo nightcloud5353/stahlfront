@@ -74,7 +74,7 @@
     { id: 'barett', name: 'Barett' },
     { id: 'muetze', name: 'Offiziersmütze' },
     { id: 'kappe', name: 'Panzerkappe' },
-    { id: 'krone', name: 'Krone' },
+    { id: 'morion', name: 'Morion' },
     { id: 'horn', name: 'Einhorn-Horn' },
   ];
 

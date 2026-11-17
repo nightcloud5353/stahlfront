@@ -214,25 +214,42 @@
         hatShine(c, -1.9, -6.9, 1.2, 0.45, -0.4, 0.22);
         break;
       }
-      case 'krone': {
-        // Krone: fünf Zacken mit Perlen, Band mit Edelsteinen, Goldglanz
-        c.fillStyle = '#7A1F3A';
-        c.beginPath(); c.ellipse(0.2, -4.4, 3.6, 1.4, 0, Math.PI, 0); c.fill();
-        c.fillStyle = hatGrad(c, -4, -8, 4, -3, ['#FFE58A', '#F2C230', '#B9861A']);
+      case 'morion': {
+        // Morion (spanischer Helm): polierte Kuppel mit hohem Kamm, bootförmige Krempe mit hochgezogenen Spitzen,
+        // Messingnieten und eine rote Feder hinten am Kamm
+        const steel = hatGrad(c, -3, -9, 3, -3, ['#F2F5F7', '#B7C0C8', '#6D7882']);
+        // Feder (hinter dem Kamm)
+        c.fillStyle = '#C8323A';
+        c.beginPath(); c.moveTo(-1.8, -7.6); c.bezierCurveTo(-3.2, -10.4, -6, -10.4, -6.6, -8.6); c.bezierCurveTo(-5.4, -9.2, -3.8, -8.8, -2.6, -6.9); c.closePath(); c.fill();
+        c.strokeStyle = 'rgba(90,10,15,.6)'; c.lineWidth = 0.3; c.stroke();
+        c.strokeStyle = 'rgba(255,255,255,.55)'; c.lineWidth = 0.25;
+        c.beginPath(); c.moveTo(-2.2, -7.5); c.quadraticCurveTo(-4, -9.6, -6.2, -8.9); c.stroke();
+        // Kuppel
+        c.fillStyle = steel;
+        c.beginPath(); c.moveTo(-3.9, -3.8); c.bezierCurveTo(-4.1, -8.6, 4.3, -8.6, 4.1, -3.8); c.closePath(); c.fill();
+        c.strokeStyle = HAT_LINE; c.lineWidth = 0.45; c.stroke();
+        // Kamm wächst oben aus der Kuppel
+        c.fillStyle = steel;
+        c.beginPath(); c.moveTo(-2.7, -6.9); c.bezierCurveTo(-2.1, -10.9, 2.3, -10.9, 2.9, -6.9); c.quadraticCurveTo(0.1, -7.6, -2.7, -6.9); c.fill();
+        c.strokeStyle = HAT_LINE; c.lineWidth = 0.4;
+        c.beginPath(); c.moveTo(-2.7, -6.9); c.bezierCurveTo(-2.1, -10.9, 2.3, -10.9, 2.9, -6.9); c.stroke();
+        c.strokeStyle = 'rgba(60,70,80,.4)'; c.lineWidth = 0.25;
+        c.beginPath(); c.moveTo(-1.8, -7.3); c.bezierCurveTo(-1.3, -9.8, 1.5, -9.8, 2, -7.3); c.stroke();
+        // Messingnieten am Kuppelrand
+        c.fillStyle = '#E0B23A'; c.strokeStyle = 'rgba(90,60,10,.6)'; c.lineWidth = 0.15;
+        for (const nx of [-2.6, -0.9, 0.8, 2.5]) { c.beginPath(); c.arc(nx + 0.1, -4.5, 0.32, 0, 6.283); c.fill(); c.stroke(); }
+        hatShine(c, -1.8, -6.3, 1.1, 0.45, -0.5, 0.6);
+        hatShine(c, -0.6, -9.3, 0.7, 0.25, -0.3, 0.55);
+        // Krempe: vorn und hinten spitz nach oben
+        c.fillStyle = hatGrad(c, 0, -5.6, 0, -2.8, ['#E3E9EE', '#8A949D']);
         c.beginPath();
-        c.moveTo(-4, -2.9); c.lineTo(-4.4, -7.2); c.lineTo(-2.4, -5.2); c.lineTo(-1.1, -8);
-        c.lineTo(0.2, -5.4); c.lineTo(1.5, -8); c.lineTo(2.8, -5.2); c.lineTo(4.8, -7.2); c.lineTo(4.4, -2.9);
+        c.moveTo(-6.1, -6.7);
+        c.quadraticCurveTo(-4.8, -2.6, 0.2, -2.85);
+        c.quadraticCurveTo(5.2, -2.6, 6.3, -6.9);
+        c.quadraticCurveTo(4.6, -3.9, 0.2, -3.85);
+        c.quadraticCurveTo(-4.3, -3.9, -6.1, -6.7);
         c.closePath(); c.fill();
-        c.strokeStyle = '#7A5410'; c.lineWidth = 0.4; c.stroke();
-        c.fillStyle = hatGrad(c, 0, -4.5, 0, -2.8, ['#FFE070', '#C8921E']);
-        c.fillRect(-4.1, -4.4, 8.6, 1.5); c.strokeRect(-4.1, -4.4, 8.6, 1.5);
-        [['#E0303A', -2.4], ['#3A7BE0', 0.2], ['#2DB36A', 2.8]].forEach(([col, gx]) => {
-          c.fillStyle = col; c.beginPath(); c.ellipse(gx, -3.65, 0.6, 0.5, 0, 0, 6.283); c.fill();
-          c.fillStyle = 'rgba(255,255,255,.75)'; c.beginPath(); c.arc(gx - 0.2, -3.8, 0.17, 0, 6.283); c.fill();
-        });
-        c.fillStyle = '#FFF6DA'; c.strokeStyle = '#B9861A'; c.lineWidth = 0.2;
-        for (const [px, py] of [[-4.4, -7.2], [-1.1, -8], [1.5, -8], [4.8, -7.2]]) { c.beginPath(); c.arc(px, py, 0.5, 0, 6.283); c.fill(); c.stroke(); }
-        hatShine(c, -2.6, -5.4, 0.35, 1, 0.2, 0.5);
+        c.strokeStyle = HAT_LINE; c.lineWidth = 0.4; c.stroke();
         break;
       }
       case 'horn': {
