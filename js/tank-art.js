@@ -219,24 +219,24 @@
         // obenauf ein großer roter Federbusch, der wie ein Kamm von vorn bis hinten über den Helm läuft
         const steel = hatGrad(c, -3, -9.5, 3.5, -3.5, ['#E3EAF2', '#8E9DB3', '#4A566B']);
         // Federbusch (hinter der Helmkuppel)
-        const cx0 = -0.3, cy0 = -8.2;
+        const cx0 = -0.2, cy0 = -8;
         const ring = [];
         for (let k = 0; k <= 13; k++) {
           const a = (-182 + k * 12.6) * Math.PI / 180, j = prand(k * 7.3);
-          ring.push([cx0 + Math.cos(a) * (5.5 + j * 0.6), cy0 + Math.sin(a) * (5 + j * 0.5) + (j - 0.5) * 0.4, 1.2 + 0.5 * Math.sin((k / 13) * Math.PI) + prand(k * 3.1) * 0.5]);
+          ring.push([cx0 + Math.cos(a) * (4.7 + j * 0.5), cy0 + Math.sin(a) * (4.1 + j * 0.4) + (j - 0.5) * 0.3, 1 + 0.4 * Math.sin((k / 13) * Math.PI) + prand(k * 3.1) * 0.4]);
         }
         c.fillStyle = '#7E1016';
         for (const [px, py, pr] of ring) { c.beginPath(); c.arc(px, py + 0.3, pr + 0.3, 0, 6.283); c.fill(); }
-        c.beginPath(); c.ellipse(cx0, cy0, 5.2, 4.3, 0, Math.PI, 0); c.fill();
+        c.beginPath(); c.ellipse(cx0, cy0, 4.5, 3.5, 0, Math.PI, 0); c.fill();
         ring.forEach(([px, py, pr], i) => {
           c.fillStyle = ['#D8222B', '#C21820', '#E8343C', '#CC1C24'][i % 4];
           c.beginPath(); c.arc(px, py, pr, 0, 6.283); c.fill();
         });
-        c.fillStyle = '#CF1E27'; c.beginPath(); c.ellipse(cx0, cy0, 4.8, 3.9, 0, Math.PI, 0); c.fill();
+        c.fillStyle = '#CF1E27'; c.beginPath(); c.ellipse(cx0, cy0, 4.1, 3.2, 0, Math.PI, 0); c.fill();
         // Straußenfedern: viele feine Strähnen, die über den Rand hinaus ausfransen
         c.lineWidth = 0.2;
         for (let k = 0; k < 40; k++) {
-          const a = (-184 + k * 4.6 + prand(k) * 3) * Math.PI / 180, r0 = 1.4 + prand(k + 9) * 1.5, r1 = 6.6 + prand(k + 3) * 1.6;
+          const a = (-184 + k * 4.6 + prand(k) * 3) * Math.PI / 180, r0 = 1.2 + prand(k + 9) * 1.2, r1 = 5.6 + prand(k + 3) * 1.3;
           c.strokeStyle = ['rgba(255,140,140,.55)', 'rgba(120,10,15,.5)', 'rgba(232,52,60,.9)'][k % 3];
           const bend = (prand(k + 21) - 0.3) * 0.35;
           c.beginPath();
@@ -244,7 +244,7 @@
           c.quadraticCurveTo(cx0 + Math.cos(a + bend) * r1 * 0.7, cy0 + Math.sin(a + bend) * r1 * 0.62, cx0 + Math.cos(a + bend * 0.6) * r1, cy0 + Math.sin(a + bend * 0.6) * r1 * 0.84);
           c.stroke();
         }
-        hatShine(c, -1.4, -12.4, 1.6, 0.45, -0.1, 0.3);
+        hatShine(c, -1.2, -11.6, 1.3, 0.4, -0.1, 0.3);
         // Kuppel mit Kamm
         c.fillStyle = steel;
         c.beginPath(); c.moveTo(-3.9, -3.9);
