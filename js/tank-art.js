@@ -147,23 +147,27 @@
         break;
       }
       case 'barett': {
-        // Barett: weich nach hinten gezogen, Lederband und goldenes Abzeichen vorn
-        c.translate(0, -3); c.scale(0.78, 0.78); c.translate(0, 3);
-        c.fillStyle = hatGrad(c, -2, -7.5, 1, -3, ['#B33434', '#8A2020', '#5A1212']);
+        // Barett: schräg getragen – vorn knapp über der Stirn, nach hinten über den Kopf heruntergezogen
+        c.fillStyle = hatGrad(c, 2, -6.5, -4, -1.5, ['#B33434', '#8A2020', '#5A1212']);
         c.beginPath();
-        c.moveTo(4.2, -3.2);
-        c.bezierCurveTo(4.6, -6.2, 1, -7.6, -2.4, -6.9);
-        c.bezierCurveTo(-5.6, -6.4, -7, -4.6, -5.9, -3.4);
-        c.quadraticCurveTo(-5.2, -2.8, -3.9, -3.1);
+        c.moveTo(4.1, -3);
+        c.bezierCurveTo(4.3, -5.4, 1.4, -6.6, -1.4, -5.9);
+        c.bezierCurveTo(-4.6, -5.1, -6.2, -2.8, -5.6, -1.2);
+        c.quadraticCurveTo(-5, -0.6, -4.2, -1.1);
+        c.quadraticCurveTo(-2.4, -4.6, 4.1, -3);
         c.closePath(); c.fill();
         c.strokeStyle = HAT_LINE; c.lineWidth = 0.45; c.stroke();
+        // Falte, wo der Stoff nach hinten fällt
         c.strokeStyle = 'rgba(60,10,10,.6)'; c.lineWidth = 0.3;
-        c.beginPath(); c.moveTo(-1.6, -6.7); c.quadraticCurveTo(-3.6, -5.4, -5.4, -3.6); c.stroke();
-        c.fillStyle = '#2B1A12'; c.beginPath(); c.moveTo(-4, -3.05); c.quadraticCurveTo(0, -3.9, 4.3, -3.1); c.lineTo(4.3, -2.75); c.quadraticCurveTo(0, -3.4, -4, -2.75); c.closePath(); c.fill();
+        c.beginPath(); c.moveTo(-0.6, -5.7); c.quadraticCurveTo(-3.4, -4.4, -4.9, -1.6); c.stroke();
+        // Lederband entlang der Kopfrundung
+        c.strokeStyle = '#2B1A12'; c.lineWidth = 0.55;
+        c.beginPath(); c.moveTo(-4.1, -1.25); c.quadraticCurveTo(-2.4, -4.4, 4, -3.15); c.stroke();
+        // Abzeichen vorn über dem Auge
         c.fillStyle = '#F2C230'; c.strokeStyle = '#8A6410'; c.lineWidth = 0.25;
-        c.beginPath(); c.moveTo(2.6, -5.9); c.lineTo(3.4, -5.1); c.lineTo(2.6, -4.2); c.lineTo(1.8, -5.1); c.closePath(); c.fill(); c.stroke();
-        c.fillStyle = 'rgba(255,255,255,.75)'; c.beginPath(); c.arc(2.45, -5.3, 0.22, 0, 6.283); c.fill();
-        hatShine(c, -1.2, -6.4, 1.6, 0.5, -0.2, 0.25);
+        c.beginPath(); c.moveTo(2.4, -5.2); c.lineTo(3.1, -4.5); c.lineTo(2.4, -3.7); c.lineTo(1.7, -4.5); c.closePath(); c.fill(); c.stroke();
+        c.fillStyle = 'rgba(255,255,255,.75)'; c.beginPath(); c.arc(2.25, -4.7, 0.2, 0, 6.283); c.fill();
+        hatShine(c, 0.2, -5.6, 1.5, 0.45, -0.3, 0.25);
         break;
       }
       case 'muetze': {
