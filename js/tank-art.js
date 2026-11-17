@@ -112,36 +112,144 @@
   const TK_TURRET = [[-15.6, -13.2], [-16.6, -15.6], [-15.4, -18.9], [-3.5, -20.6], [9.2, -20.6], [15.6, -17.4], [15.4, -14.6], [11.8, -13.2]];
   const DEAD = { base: '#2C2C26', turret: '#33332C', dark: '#18180F' };
 
+  // Kopfbedeckung des Klecks-Kommandanten. Kopf: Halbkreis um (hx, hy), Radius ~4, Blick nach rechts (+x),
+  // Augenoberkante bei hy - 2.65 – nichts darf tiefer reichen, sonst verschwinden die Augen.
+  const HAT_LINE = 'rgba(0,0,0,.5)';
+  function hatGrad(c, x0, y0, x1, y1, stops) {
+    const g = c.createLinearGradient(x0, y0, x1, y1);
+    stops.forEach((col, i) => g.addColorStop(i / (stops.length - 1), col));
+    return g;
+  }
+  function hatShine(c, x, y, rx, ry, rot, a) {
+    c.fillStyle = `rgba(255,255,255,${a})`; c.beginPath(); c.ellipse(x, y, rx, ry, rot, 0, 6.283); c.fill();
+  }
   function drawHat(c, hat, hx, hy) {
+    c.save();
+    c.translate(hx, hy);
+    c.lineJoin = 'round'; c.lineCap = 'round';
     switch (hat) {
-      case 'helm':
-        c.fillStyle = '#4A5530'; c.beginPath(); c.ellipse(hx, hy - 2.2, 4.8, 3.2, 0, Math.PI, 0); c.fill();
-        c.fillRect(hx - 5.4, hy - 2.4, 10.8, 0.9); break;
-      case 'barett':
-        c.fillStyle = '#7A1E1E'; c.beginPath(); c.ellipse(hx - 0.8, hy - 3.6, 4.6, 1.6, -0.25, 0, Math.PI * 2); c.fill(); break;
-      case 'muetze':
-        c.fillStyle = '#3B4226'; c.fillRect(hx - 4, hy - 6.2, 8, 2.6);
-        c.fillStyle = '#16160F'; c.fillRect(hx - 1, hy - 3.8, 6, 0.9);
-        c.fillStyle = '#E0A526'; c.fillRect(hx - 0.6, hy - 5.6, 1.2, 1.2); break;
-      case 'kappe':
-        c.fillStyle = '#1C1C18'; c.beginPath(); c.ellipse(hx, hy - 2.4, 4.4, 3.2, 0, Math.PI, 0); c.fill();
-        c.strokeStyle = '#3A3A34'; c.lineWidth = 0.4; for (const dx of [-2, 0, 2]) { c.beginPath(); c.moveTo(hx + dx, hy - 5.4); c.lineTo(hx + dx, hy - 2.4); c.stroke(); } break;
-      case 'krone':
-        c.fillStyle = '#F2C230'; c.beginPath();
-        c.moveTo(hx - 3.5, hy - 3); c.lineTo(hx - 3.5, hy - 6); c.lineTo(hx - 1.8, hy - 4.3); c.lineTo(hx, hy - 6.6); c.lineTo(hx + 1.8, hy - 4.3); c.lineTo(hx + 3.5, hy - 6); c.lineTo(hx + 3.5, hy - 3);
-        c.closePath(); c.fill(); break;
+      case 'helm': {
+        // Stahlhelm: gewölbte Kuppel, ausgestellter Rand, Tarnnetz-Streifen und Niete
+        c.fillStyle = hatGrad(c, -3, -7, 2, -2.6, ['#7C8A52', '#56633A', '#38411F']);
+        c.beginPath();
+        c.moveTo(-5.6, -2.75);
+        c.quadraticCurveTo(-5.2, -3.6, -4.4, -3.6);
+        c.bezierCurveTo(-4.4, -8.4, 4.6, -8.4, 4.6, -3.6);
+        c.quadraticCurveTo(5.6, -3.5, 6, -2.75);
+        c.closePath(); c.fill();
+        c.strokeStyle = HAT_LINE; c.lineWidth = 0.45; c.stroke();
+        c.strokeStyle = 'rgba(25,30,12,.55)'; c.lineWidth = 0.35;
+        c.beginPath(); c.moveTo(-4.4, -3.6); c.lineTo(4.6, -3.6); c.stroke();
+        c.strokeStyle = 'rgba(40,46,22,.6)'; c.lineWidth = 0.3;
+        for (const dx of [-2.6, 0.1, 2.7]) { c.beginPath(); c.moveTo(dx - 0.4, -6.9 + Math.abs(dx) * 0.35); c.quadraticCurveTo(dx + 0.3, -5.4, dx - 0.2, -3.8); c.stroke(); }
+        c.fillStyle = '#2A3016'; c.beginPath(); c.arc(-3.3, -4.5, 0.35, 0, 6.283); c.fill();
+        hatShine(c, -1.4, -6.6, 1.8, 0.6, -0.25, 0.35);
+        break;
+      }
+      case 'barett': {
+        // Barett: weich nach hinten gezogen, Lederband und goldenes Abzeichen vorn
+        c.fillStyle = hatGrad(c, -2, -7.5, 1, -3, ['#B33434', '#8A2020', '#5A1212']);
+        c.beginPath();
+        c.moveTo(4.2, -3.2);
+        c.bezierCurveTo(4.6, -6.2, 1, -7.6, -2.4, -6.9);
+        c.bezierCurveTo(-5.6, -6.4, -7, -4.6, -5.9, -3.4);
+        c.quadraticCurveTo(-5.2, -2.8, -3.9, -3.1);
+        c.closePath(); c.fill();
+        c.strokeStyle = HAT_LINE; c.lineWidth = 0.45; c.stroke();
+        c.strokeStyle = 'rgba(60,10,10,.6)'; c.lineWidth = 0.3;
+        c.beginPath(); c.moveTo(-1.6, -6.7); c.quadraticCurveTo(-3.6, -5.4, -5.4, -3.6); c.stroke();
+        c.fillStyle = '#2B1A12'; c.beginPath(); c.moveTo(-4, -3.05); c.quadraticCurveTo(0, -3.9, 4.3, -3.1); c.lineTo(4.3, -2.75); c.quadraticCurveTo(0, -3.4, -4, -2.75); c.closePath(); c.fill();
+        c.fillStyle = '#F2C230'; c.strokeStyle = '#8A6410'; c.lineWidth = 0.25;
+        c.beginPath(); c.moveTo(2.6, -5.9); c.lineTo(3.4, -5.1); c.lineTo(2.6, -4.2); c.lineTo(1.8, -5.1); c.closePath(); c.fill(); c.stroke();
+        c.fillStyle = 'rgba(255,255,255,.75)'; c.beginPath(); c.arc(2.45, -5.3, 0.22, 0, 6.283); c.fill();
+        hatShine(c, -1.2, -6.4, 1.6, 0.5, -0.2, 0.25);
+        break;
+      }
+      case 'muetze': {
+        // Offiziersmütze: hoher Deckel, dunkles Band mit Goldkordel, glänzender Schirm, Kokarde
+        c.translate(0, -3); c.scale(0.8, 0.8); c.translate(0.4, 3);
+        c.fillStyle = hatGrad(c, 0, -9, 0, -4.4, ['#6B7A44', '#4F5A30']);
+        c.beginPath();
+        c.moveTo(-3.8, -4.6);
+        c.lineTo(-5.4, -7.6); c.quadraticCurveTo(-5.4, -8.8, -3.4, -8.9);
+        c.lineTo(3.8, -8.9); c.quadraticCurveTo(6, -8.8, 5.8, -7.6);
+        c.lineTo(4, -4.6); c.closePath(); c.fill();
+        c.strokeStyle = HAT_LINE; c.lineWidth = 0.45; c.stroke();
+        hatShine(c, -1.6, -8.2, 2.4, 0.45, 0, 0.3);
+        c.fillStyle = '#2B3018'; c.fillRect(-3.9, -5.2, 7.9, 1.6);
+        c.strokeStyle = HAT_LINE; c.lineWidth = 0.35; c.strokeRect(-3.9, -5.2, 7.9, 1.6);
+        c.strokeStyle = '#E0B23A'; c.lineWidth = 0.35;
+        c.beginPath(); c.moveTo(-3.6, -4.95); c.quadraticCurveTo(0.2, -4.3, 3.8, -4.95); c.stroke();
+        c.fillStyle = '#F2C230'; c.beginPath(); c.arc(2.4, -6.4, 0.75, 0, 6.283); c.fill();
+        c.fillStyle = '#B3262B'; c.beginPath(); c.arc(2.4, -6.4, 0.4, 0, 6.283); c.fill();
+        c.fillStyle = hatGrad(c, 0, -3.8, 0, -2.6, ['#3A3A34', '#0E0E0A']);
+        c.beginPath(); c.moveTo(1.6, -3.7); c.lineTo(4.4, -3.7); c.quadraticCurveTo(6.7, -3.4, 6.8, -2.8); c.quadraticCurveTo(4.2, -2.7, 1.6, -3.1); c.closePath(); c.fill();
+        c.strokeStyle = 'rgba(255,255,255,.35)'; c.lineWidth = 0.25; c.beginPath(); c.moveTo(3, -3.55); c.quadraticCurveTo(5, -3.4, 6.2, -3.05); c.stroke();
+        break;
+      }
+      case 'kappe': {
+        // Panzerkappe: gepolsterte Lederhaube mit Wülsten, Ohrenklappe und Schutzbrille
+        c.fillStyle = hatGrad(c, -2, -8, 1, -2.6, ['#4A443C', '#26231F', '#141210']);
+        c.beginPath();
+        c.moveTo(-4.7, -2.75);
+        c.bezierCurveTo(-5.4, -8.3, 4.8, -8.6, 4.9, -2.75);
+        c.closePath(); c.fill();
+        c.strokeStyle = HAT_LINE; c.lineWidth = 0.45; c.stroke();
+        c.strokeStyle = 'rgba(120,110,95,.55)'; c.lineWidth = 0.45;
+        for (const dx of [-2.6, -0.3, 2]) { c.beginPath(); c.moveTo(dx * 0.75, -7); c.quadraticCurveTo(dx * 1.25, -5, dx * 1.15, -2.9); c.stroke(); }
+        c.fillStyle = '#2E2A24'; c.beginPath(); c.ellipse(-3.7, -3.3, 0.9, 1.3, 0.2, 0, 6.283); c.fill();
+        c.strokeStyle = HAT_LINE; c.lineWidth = 0.35; c.stroke();
+        c.fillStyle = '#6B5A3A'; c.fillRect(-2.6, -6.6, 6.6, 0.7);
+        for (const gx of [0.9, 3.1]) {
+          c.fillStyle = '#5C5A50'; c.beginPath(); c.arc(gx, -6.3, 1.15, 0, 6.283); c.fill();
+          c.fillStyle = hatGrad(c, gx - 0.8, -7.1, gx + 0.8, -5.5, ['#CFEFFF', '#4E9CC4']);
+          c.beginPath(); c.arc(gx, -6.3, 0.78, 0, 6.283); c.fill();
+          c.fillStyle = 'rgba(255,255,255,.8)'; c.beginPath(); c.arc(gx - 0.3, -6.6, 0.22, 0, 6.283); c.fill();
+        }
+        hatShine(c, -1.9, -6.9, 1.2, 0.45, -0.4, 0.22);
+        break;
+      }
+      case 'krone': {
+        // Krone: fünf Zacken mit Perlen, Band mit Edelsteinen, Goldglanz
+        c.fillStyle = '#7A1F3A';
+        c.beginPath(); c.ellipse(0.2, -4.4, 3.6, 1.4, 0, Math.PI, 0); c.fill();
+        c.fillStyle = hatGrad(c, -4, -8, 4, -3, ['#FFE58A', '#F2C230', '#B9861A']);
+        c.beginPath();
+        c.moveTo(-4, -2.9); c.lineTo(-4.4, -7.2); c.lineTo(-2.4, -5.2); c.lineTo(-1.1, -8);
+        c.lineTo(0.2, -5.4); c.lineTo(1.5, -8); c.lineTo(2.8, -5.2); c.lineTo(4.8, -7.2); c.lineTo(4.4, -2.9);
+        c.closePath(); c.fill();
+        c.strokeStyle = '#7A5410'; c.lineWidth = 0.4; c.stroke();
+        c.fillStyle = hatGrad(c, 0, -4.5, 0, -2.8, ['#FFE070', '#C8921E']);
+        c.fillRect(-4.1, -4.4, 8.6, 1.5); c.strokeRect(-4.1, -4.4, 8.6, 1.5);
+        [['#E0303A', -2.4], ['#3A7BE0', 0.2], ['#2DB36A', 2.8]].forEach(([col, gx]) => {
+          c.fillStyle = col; c.beginPath(); c.ellipse(gx, -3.65, 0.6, 0.5, 0, 0, 6.283); c.fill();
+          c.fillStyle = 'rgba(255,255,255,.75)'; c.beginPath(); c.arc(gx - 0.2, -3.8, 0.17, 0, 6.283); c.fill();
+        });
+        c.fillStyle = '#FFF6DA'; c.strokeStyle = '#B9861A'; c.lineWidth = 0.2;
+        for (const [px, py] of [[-4.4, -7.2], [-1.1, -8], [1.5, -8], [4.8, -7.2]]) { c.beginPath(); c.arc(px, py, 0.5, 0, 6.283); c.fill(); c.stroke(); }
+        hatShine(c, -2.6, -5.4, 0.35, 1, 0.2, 0.5);
+        break;
+      }
       case 'horn': {
-        // goldenes Spiralhorn, leicht nach vorn geneigt, mit Mähnenlocke
-        const tip = [hx + 1.6, hy - 10.5];
-        c.fillStyle = '#F6D36B'; c.beginPath(); c.moveTo(hx - 1.6, hy - 3.2); c.lineTo(tip[0], tip[1]); c.lineTo(hx + 1.6, hy - 3.2); c.closePath(); c.fill();
-        c.strokeStyle = '#C9962E'; c.lineWidth = 0.35;
-        for (let k = 1; k <= 4; k++) { const f = k / 5, y = hy - 3.2 - f * 7.3, half = 1.6 * (1 - f), x = hx + f * 1.6; c.beginPath(); c.moveTo(x - half, y + 0.5); c.lineTo(x + half, y - 0.3); c.stroke(); }
-        c.fillStyle = '#B79BFF'; c.beginPath(); c.ellipse(hx - 3.2, hy - 3.4, 1.6, 1.1, -0.5, 0, 6.283); c.fill();
-        c.fillStyle = '#7FC8FF'; c.beginPath(); c.ellipse(hx - 4.2, hy - 2.2, 1.2, 0.9, -0.2, 0, 6.283); c.fill();
+        // Einhorn: Spiralhorn mit Glanz, bunte Mähnenlocken und ein Glitzerstern
+        [['#FF9ACB', -3.4, -3.6, 1.7, 1.2, -0.6], ['#B79BFF', -4.6, -2.6, 1.5, 1.1, -0.2], ['#7FC8FF', -5.2, -1.2, 1.2, 0.95, 0.3], ['#9EEBB0', -2.2, -4.4, 1.2, 0.9, -0.9]].forEach(([col, x, y, rx, ry, r]) => {
+          c.fillStyle = col; c.beginPath(); c.ellipse(x, y, rx, ry, r, 0, 6.283); c.fill();
+          c.strokeStyle = 'rgba(80,40,90,.35)'; c.lineWidth = 0.25; c.stroke();
+        });
+        const tip = [1.9, -11];
+        c.fillStyle = hatGrad(c, -1.6, 0, 1.8, 0, ['#FFF2B8', '#F6D36B', '#D9A53A']);
+        c.beginPath(); c.moveTo(-1.7, -3.1); c.lineTo(tip[0], tip[1]); c.lineTo(1.8, -3.1); c.quadraticCurveTo(0, -2.6, -1.7, -3.1); c.fill();
+        c.strokeStyle = '#A9781E'; c.lineWidth = 0.35; c.stroke();
+        c.strokeStyle = '#C9962E'; c.lineWidth = 0.4;
+        for (let k = 1; k <= 4; k++) { const f = k / 5, y = -3.1 - f * 7.9, half = 1.75 * (1 - f), x = f * 1.9; c.beginPath(); c.moveTo(x - half, y + 0.55); c.quadraticCurveTo(x, y + 0.5, x + half, y - 0.35); c.stroke(); }
+        c.strokeStyle = 'rgba(255,255,255,.7)'; c.lineWidth = 0.3; c.beginPath(); c.moveTo(-0.9, -3.6); c.lineTo(1.3, -9.4); c.stroke();
+        c.fillStyle = '#FFFFFF';
+        c.beginPath(); c.moveTo(4, -8.3); c.lineTo(4.18, -7.88); c.lineTo(4.6, -7.7); c.lineTo(4.18, -7.52); c.lineTo(4, -7.1); c.lineTo(3.82, -7.52); c.lineTo(3.4, -7.7); c.lineTo(3.82, -7.88); c.closePath(); c.fill();
         break;
       }
       default:
     }
+    c.restore();
   }
   function tankShot(id) { const a = tankAnim.get(id); if (a) a.shot = performance.now(); }
 
