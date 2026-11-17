@@ -75,6 +75,7 @@
     { id: 'muetze', name: 'Offiziersmütze' },
     { id: 'kappe', name: 'Panzerkappe' },
     { id: 'morion', name: 'Morion' },
+    { id: 'pickel', name: 'Pickelhaube' },
     { id: 'horn', name: 'Einhorn-Horn' },
   ];
 

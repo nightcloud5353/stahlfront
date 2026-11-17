@@ -283,6 +283,48 @@
         c.beginPath(); c.moveTo(-1.5, -3.15); c.quadraticCurveTo(2.5, -3, 5, -3.6); c.stroke();
         break;
       }
+      case 'pickel': {
+        // Pickelhaube: glänzendes schwarzes Leder, goldene Spitze auf Kreuzbeschlag, Wappenschild vorn,
+        // Vorder- und Nackenschirm mit Goldkante
+        const brass = (x0, y0, x1, y1) => hatGrad(c, x0, y0, x1, y1, ['#FFE9A0', '#E0B23A', '#9C7418']);
+        // Nackenschirm hinten
+        c.fillStyle = '#16161A';
+        c.beginPath(); c.moveTo(-3.2, -4.2); c.quadraticCurveTo(-4.8, -3.6, -5.8, -2.6); c.lineTo(-4.2, -2.75); c.lineTo(-2.8, -3.4); c.closePath(); c.fill();
+        c.strokeStyle = HAT_LINE; c.lineWidth = 0.35; c.stroke();
+        // Kuppel
+        c.fillStyle = hatGrad(c, -3, -8.5, 3, -3.4, ['#5A5C66', '#24252B', '#0C0C0F']);
+        c.beginPath(); c.moveTo(-4, -3.5); c.bezierCurveTo(-4.4, -8.6, 4.6, -8.6, 4.2, -3.5); c.closePath(); c.fill();
+        c.strokeStyle = HAT_LINE; c.lineWidth = 0.45; c.stroke();
+        hatShine(c, -1.6, -6.9, 1.6, 0.55, -0.45, 0.45);
+        hatShine(c, 2.6, -5.2, 0.3, 1, 0.35, 0.18);
+        // Goldkante unten
+        c.strokeStyle = '#D9A93A'; c.lineWidth = 0.4;
+        c.beginPath(); c.moveTo(-3.9, -3.75); c.quadraticCurveTo(0.1, -4.2, 4.1, -3.75); c.stroke();
+        // Vorderschirm
+        c.fillStyle = hatGrad(c, 0, -4, 0, -2.8, ['#3A3B42', '#0C0C0F']);
+        c.beginPath(); c.moveTo(2.4, -3.75); c.quadraticCurveTo(5.4, -3.6, 6.4, -2.85); c.quadraticCurveTo(4.4, -2.75, 2.4, -3.2); c.closePath(); c.fill();
+        c.strokeStyle = '#D9A93A'; c.lineWidth = 0.3; c.beginPath(); c.moveTo(2.6, -3.2); c.quadraticCurveTo(4.5, -2.85, 6.3, -2.9); c.stroke();
+        // Wappenschild vorn (Adler angedeutet)
+        c.fillStyle = brass(1.2, -7, 3.6, -4.4);
+        c.beginPath(); c.moveTo(1.4, -6.9); c.quadraticCurveTo(2.4, -7.3, 3.4, -6.9); c.lineTo(3.3, -5.4); c.quadraticCurveTo(2.4, -4.3, 1.5, -5.4); c.closePath(); c.fill();
+        c.strokeStyle = '#7A5410'; c.lineWidth = 0.22; c.stroke();
+        c.beginPath(); c.moveTo(1.8, -6.3); c.quadraticCurveTo(2.4, -5.7, 3, -6.3); c.moveTo(2.4, -6.5); c.lineTo(2.4, -5.1); c.stroke();
+        // Kreuzbeschlag und Spitze
+        c.fillStyle = brass(-1.4, -8.6, 1.8, -7.4);
+        c.beginPath(); c.ellipse(0.2, -7.75, 1.6, 0.55, 0, 0, 6.283); c.fill();
+        c.strokeStyle = '#7A5410'; c.lineWidth = 0.22; c.stroke();
+        c.fillStyle = brass(-0.4, -8.6, 0.8, -8.2);
+        c.fillRect(-0.45, -8.75, 1.3, 0.9); c.strokeRect(-0.45, -8.75, 1.3, 0.9);
+        c.fillStyle = brass(-0.5, -11, 0.9, -9);
+        c.beginPath(); c.moveTo(-0.5, -8.75); c.lineTo(0.2, -12.2); c.lineTo(0.9, -8.75); c.closePath(); c.fill();
+        c.strokeStyle = '#7A5410'; c.lineWidth = 0.25; c.stroke();
+        c.fillStyle = 'rgba(255,255,255,.7)'; c.beginPath(); c.moveTo(-0.15, -8.9); c.lineTo(0.15, -11.4); c.lineTo(0.2, -8.9); c.closePath(); c.fill();
+        // Kokarde seitlich hinten
+        c.fillStyle = '#F2F2F2'; c.beginPath(); c.arc(-3.2, -4.5, 0.6, 0, 6.283); c.fill();
+        c.fillStyle = '#1A1A1A'; c.beginPath(); c.arc(-3.2, -4.5, 0.38, 0, 6.283); c.fill();
+        c.fillStyle = '#C8323A'; c.beginPath(); c.arc(-3.2, -4.5, 0.18, 0, 6.283); c.fill();
+        break;
+      }
       case 'horn': {
         // Einhorn: Spiralhorn mit Glanz, bunte Mähnenlocken und ein Glitzerstern
         [['#FF9ACB', -3.4, -3.6, 1.7, 1.2, -0.6], ['#B79BFF', -4.6, -2.6, 1.5, 1.1, -0.2], ['#7FC8FF', -5.2, -1.2, 1.2, 0.95, 0.3], ['#9EEBB0', -2.2, -4.4, 1.2, 0.9, -0.9]].forEach(([col, x, y, rx, ry, r]) => {
