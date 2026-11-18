@@ -72,9 +72,12 @@ for (const dev of ['iphone', 'android', 'ipad']) {
   });
 }
 
-for (const dev of ['iphone', 'iphoneHoch', 'ipad']) {
-  test(`${dev}: Lobby ragt nicht über den Bildschirm hinaus`, async () => {
+// Lädt die Google-Schrift nicht (schlechtes Netz; in den Tests ist sie gesperrt), springt eine breitere
+// Ersatzschrift ein. Mit 'DejaVu Sans' (breit, auf Linux-Testrechnern wie GitHub vorhanden) prüfen, dass nichts abgeschnitten wird.
+for (const [dev, font] of [['iphone'], ['iphoneHoch'], ['ipad'], ['iphoneHoch', 'DejaVu Sans']]) {
+  test(`${dev}${font ? ' mit Schrift ' + font : ''}: Lobby ragt nicht über den Bildschirm hinaus`, async () => {
     const page = await env.open(dev);
+    if (font) await page.addStyleTag({ content: `:root { --ui: '${font}', sans-serif; }` });
     await toLobby(page);
     const r = await page.evaluate(() => {
       const bad = [...document.querySelectorAll('#lobby button')].filter((b) => {

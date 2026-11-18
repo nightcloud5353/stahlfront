@@ -1,6 +1,6 @@
 {
   "name": "stahlfront",
-  "version": "1.19.1",
+  "version": "1.19.2",
   "private": true,
   "description": "Rundenbasiertes Panzer-Artillerie-Spiel im Browser",
   "scripts": {

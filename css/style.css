@@ -477,7 +477,7 @@ body.phone .toast { white-space: normal; max-width: 70vw; text-align: center; fo
 /* Handy hoch: Knopfreihen dürfen umbrechen statt abgeschnitten zu werden */
 @media (max-width: 480px) {
   body.touch .seg { grid-auto-flow: row; grid-template-columns: repeat(auto-fit, minmax(98px, 1fr)); }
-  body.touch .seg button { font-size: 14px; letter-spacing: .02em; }
+  body.touch .seg button { font-size: 14px; letter-spacing: 0; padding: 0 2px; }
 }
 /* Waffenmenü auf dem Handy: Felder füllen den Platz, Text nicht abschneiden */
 body.phone .wbtn { min-height: 64px; }
