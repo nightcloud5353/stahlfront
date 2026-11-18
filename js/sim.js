@@ -63,6 +63,15 @@
         case 'look': if (this.phase === 'lobby') { p.look = validLook(m); this.broadcastLobby(); } return;
         case 'lobby': if (p.id === this.hostPid) this.toLobby(); return;
         case 'rematch': if (p.id === this.hostPid && this.phase === 'over') this.start(p, true); return;
+        // Mitspieler hat den Spielstart (oder Teile des Geländes) verpasst, z. B. weil der Internet-Server
+        // eine Nachricht verworfen hat -> alles noch einmal schicken (höchstens alle 2 s)
+        case 'sync': {
+          const now = Date.now();
+          if (!this.g || now - (p.lastSync || 0) < 2000) return;
+          p.lastSync = now;
+          this.sendStart(p);
+          return;
+        }
         default: return this.gameInput(p, m);
       }
     }

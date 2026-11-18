@@ -383,9 +383,9 @@
         if (roomCode) store.set('sf_tok_' + roomCode, m.token);
         break;
       case 'lobby': onLobby(m); break;
-      case 'terrain': terrainParts[m.i] = m.d; break;
+      case 'terrain': if (m.i === 0) terrainParts = []; terrainParts[m.i] = m.d; terrainParts.n = m.n; break;
       case 'start': onStart(m); break;
-      case 's': onSnap(m); break;
+      case 's': if (!G || startBroken) needSync(); onSnap(m); break;
       case 'boom': onBoom(m); break;
       case 'slide': onSlide(m); break;
       case 'sl': onSlideLand(m); break;
@@ -610,8 +610,21 @@
   });
 
   // ---------- Spielstart ----------
+  // Spielstart verpasst (der Internet-Server kann einzelne Nachrichten verwerfen): Gastgeber um alles bitten.
+  // Erkennbar an Spielzuständen, die ankommen, obwohl hier noch kein Gefecht läuft.
+  let lastSync = 0, startBroken = false;
+  function needSync() {
+    const now = performance.now();
+    if (now - lastSync < 2500) return;
+    lastSync = now;
+    send({ t: 'sync' });
+  }
   function onStart(m) {
     const theme = THEMES[m.theme] || THEMES[0];
+    // unvollständiges Gelände (ein Teil ist unterwegs verloren gegangen) -> nicht mit Löchern starten, neu anfordern
+    const have = terrainParts.filter(Boolean).length;
+    if (!terrainParts.n || have < terrainParts.n) { terrainParts = []; startBroken = true; lastSync = 0; needSync(); return; }
+    startBroken = false;
     const rle = [].concat(...terrainParts.filter(Boolean));
     terrainParts = [];
     const mask = new Uint8Array(W * H);
@@ -2085,9 +2098,32 @@
         this.sim = sim;
         return sim;
       },
+      // Ich bin Mitspieler (nicht Gastgeber): alle Nachrichten laufen wie übers Netz als JSON hin und her.
+      // Der Gastgeber ist ein unsichtbarer Spieler in derselben Seite (this.hostSend schickt in seinem Namen).
+      // drop: Quelltext einer Funktion (Nachricht an mich, Nummer) -> true = Nachricht geht unterwegs verloren
+      remoteGuest(name, look, drop) {
+        const lost = drop ? new Function('return (' + drop + ')')() : () => false;
+        let nOut = 0;
+        const sim = new window.StahlSim();
+        const wire = (m) => JSON.parse(JSON.stringify(m));
+        const hc = { sent: [], send(m) { this.sent.push(wire(m)); }, close() {} };
+        sim.onConnect(hc);
+        sim.onMessage(hc, { t: 'join', name: 'Gastgeber' });
+        const l = { send() {}, onmessage: null, onclose: null, close() { sim.destroy(); } };
+        const gc = { relay: true, send(m) { if (lost(m, nOut++)) return; const w = wire(m); setTimeout(() => { if (l.onmessage) l.onmessage(w); }, 0); }, close() {} };
+        sim.onConnect(gc);
+        l.send = (m) => { const w = wire(m); setTimeout(() => sim.onMessage(gc, w), 0); };
+        sim.code = 'TEST'; roomCode = 'TEST'; amHost = false;
+        attach(l);
+        l.send({ t: 'join', name: name || 'Gast', look: look || myLook });
+        this.sim = sim;
+        this.hostSend = (m) => sim.onMessage(hc, m);
+        return sim;
+      },
       send: (m) => send(m),
       get myLook() { return myLook; },
       get inGame() { return !!G; },
+      guestMask: () => (G ? Array.from(G.mask) : []),
     };
   }
 })();

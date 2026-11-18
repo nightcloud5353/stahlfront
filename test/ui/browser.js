@@ -90,4 +90,11 @@ async function visible(page, sel) {
   }, sel);
 }
 
-module.exports = { setup, toLobby, toGame, visible, DEVICES };
+// Gespeichertes Passwort + Schlüssel für die verschlüsselte Internet-Verbindung (Seite ohne ?test)
+function passwordStorage() {
+  const src = fs.readFileSync(path.join(ROOT, 'js', 'game.js'), 'utf8');
+  const hash = /const PW_HASH = '([0-9a-f]+)'/.exec(src)[1];
+  return { sf_pw: hash, sf_key: Buffer.alloc(32, 7).toString('base64') };
+}
+
+module.exports = { setup, serve, toLobby, toGame, visible, passwordStorage, DEVICES };

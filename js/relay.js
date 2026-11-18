@@ -157,7 +157,9 @@
         return;
       }
       if (!e) return;
-      e.seen = performance.now();
+      // Antworten über den Server, über den der Mitspieler zuletzt gesprochen hat (nach einem Neuverbinden
+      // des Gastgebers wäre die alte Verbindung tot und alles an ihn ginge verloren)
+      e.mq = mq; e.seen = performance.now();
       if (m.k === 'm') sim.onMessage(e.conn, m.m);
       else if (m.k === 'bye') { conns.delete(m.f); sim.onDisconnect(e.conn); }
     };

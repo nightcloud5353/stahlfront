@@ -91,3 +91,25 @@ test('Wer während des Gefechts beitritt, schaut zu', () => {
     assert.ok(spaet.conn.last('start'), 'bekommt trotzdem das laufende Gefecht');
   });
 });
+
+test('Verpasster Spielstart: "sync" schickt Gelände und Start erneut (höchstens alle 2 s)', () => {
+  withSeed(11, () => {
+    const sim = makeSim();
+    const a = joinPlayer(sim, 'Host');
+    const b = joinPlayer(sim, 'Gast');
+    sim.onMessage(b.conn, { t: 'sync' }); // in der Lobby: nichts zu schicken
+    assert.equal(b.conn.sent.filter((m) => m.t === 'start').length, 0);
+    sim.onMessage(a.conn, { t: 'start' });
+    const starts = () => b.conn.sent.filter((m) => m.t === 'start').length;
+    assert.equal(starts(), 1);
+    const n0 = b.conn.sent.length;
+    sim.onMessage(b.conn, { t: 'sync' });
+    assert.equal(starts(), 2, 'Start erneut geschickt');
+    const again = b.conn.sent.slice(n0);
+    const parts = again.filter((m) => m.t === 'terrain');
+    assert.ok(parts.length >= 1 && parts.length === parts[0].n, 'komplettes Gelände erneut geschickt');
+    assert.ok(again.findIndex((m) => m.t === 'terrain') < again.findIndex((m) => m.t === 'start'), 'Gelände vor dem Start');
+    sim.onMessage(b.conn, { t: 'sync' });
+    assert.equal(starts(), 2, 'kurz danach nicht noch einmal (kein Fluten)');
+  });
+});
