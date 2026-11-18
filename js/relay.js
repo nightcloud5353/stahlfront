@@ -9,6 +9,19 @@
   const enc = new TextEncoder(), dec = new TextDecoder();
   const TICK_MS = 60;        // so oft prüft der sichere Kanal, ob etwas nachgeschickt/bestätigt werden muss
   const PATH_FRESH = 12000;  // über einen Server, über den der Mitspieler so lange nichts sagte, nicht mehr schicken
+  const PATH_QUICK = 3000;   // Wege, über die kürzlich etwas kam, werden bevorzugt (Messung läuft jede Sekunde)
+  const PING_MS = 1000;      // so oft wird auf jedem Weg die Laufzeit gemessen
+  const STATE_GAP = 66;      // Spielzustand über einen Internet-Server höchstens ~15x pro Sekunde (Direktweg: ohne Grenze)
+
+  // Laufzeit eines Weges (Hin und zurück, ms), geglättet. Unbekannt = hinten anstellen.
+  const addRtt = (s, ms) => { s.rtt = s.rtt == null ? ms : s.rtt * 0.7 + ms * 0.3; };
+  // Reihenfolge der Wege: erst die, über die kürzlich etwas kam, dann die schnellsten.
+  // (Früher: "zuletzt gehört" – das war fast immer der LANGSAMERE Server, weil dessen Kopie
+  // einer doppelt geschickten Nachricht zuletzt ankommt.)
+  function bestFirst(list, now) {
+    const key = (s) => (now - s.heard < PATH_QUICK ? 0 : 1e6) + (s.rtt == null ? 5e5 : s.rtt);
+    return list.sort((a, b) => key(a.s) - key(b.s) || b.s.heard - a.s.heard);
+  }
 
   // Testbetrieb: ?relay=ws://127.0.0.1:8888 (mehrere mit Komma)
   function brokers() {
@@ -113,6 +126,40 @@
     }
   }
 
+  // ---------- Direktweg (WebRTC-Datenkanal von PeerJS) ----------
+  // Zusätzlicher, viel schnellerer Weg neben den Internet-Servern (z. B. alle im selben WLAN/Hotspot).
+  // Verhält sich wie ein Server-Anschluss (pub/ready/close), Nachrichten sind genauso verschlüsselt.
+  // dc: { open, send(bytes), on('data'|'close'|'error', fn), close(), peerConnection? }
+  const toBytes = (d) => (d instanceof Uint8Array ? d : d instanceof ArrayBuffer ? new Uint8Array(d) : ArrayBuffer.isView(d) ? new Uint8Array(d.buffer, d.byteOffset, d.byteLength) : null);
+  class Direct {
+    constructor(dc, onMsg, onDown) {
+      this.dc = dc; this.onMsg = onMsg; this.onDown = onDown;
+      this.direct = true; this.ready = true; this.closed = false;
+      this.outQ = Promise.resolve(); this.inQ = Promise.resolve();
+      dc.on('data', (d) => {
+        const b = toBytes(d);
+        if (!b || this.closed) return;
+        this.inQ = this.inQ.then(() => open(b)).then((msg) => { if (msg && this.onMsg && !this.closed) this.onMsg('', msg); }).catch(() => {});
+      });
+      dc.on('close', () => this.fail());
+      dc.on('error', () => this.fail());
+      const pc = dc.peerConnection;
+      if (pc && pc.addEventListener) {
+        pc.addEventListener('iceconnectionstatechange', () => { const st = pc.iceConnectionState; if (st === 'failed' || st === 'closed') this.fail(); });
+      }
+    }
+    pub(topic, obj) {
+      this.outQ = this.outQ.then(() => seal(obj)).then((body) => { if (!this.closed && this.dc.open) this.dc.send(body); }).catch(() => {});
+    }
+    fail() {
+      if (this.closed) return;
+      this.closed = true; this.ready = false;
+      try { this.dc.close(); } catch (e) { /* egal */ }
+      if (this.onDown) this.onDown();
+    }
+    close() { this.fail(); }
+  }
+
   // ---------- Gastgeber ----------
   // Lauscht auf allen Servern gleichzeitig (damit jeder Mitspieler einen findet) und verbindet bei Abbruch neu.
   // Jeder Mitspieler hat einen sicheren Kanal (reliable.js); geschickt wird über jeden Server, über den er
@@ -120,15 +167,21 @@
   function host(code, sim, cb) {
     if (!KEY) { setTimeout(() => cb.onFail && cb.onFail(), 0); return { close() {} }; }
     const base = topicBase(code);
-    const conns = new Map(); // Mitspieler-ID -> { conn, chan, to, paths: Map(Server-Verbindung -> zuletzt gehört), seen }
+    const conns = new Map(); // Mitspieler-ID -> { conn, chan, to, paths: Map(Weg -> { heard, rtt }), seen }
     const live = new Set();
     let readyOnce = false, failed = 0, closed = false;
     const list = brokers();
-    // Wege zu einem Mitspieler: Server-Verbindungen, die noch stehen und über die er kürzlich sprach
+    // Wege zu einem Mitspieler: Verbindungen, die noch stehen und über die er kürzlich sprach – schnellster zuerst
     const routes = (e) => {
       const now = performance.now();
-      const ok = [...e.paths].filter(([mq, t]) => live.has(mq) && now - t < PATH_FRESH).sort((a, b) => b[1] - a[1]).map((x) => x[0]);
-      return ok;
+      const ok = [...e.paths].filter(([mq, s]) => live.has(mq) && now - s.heard < PATH_FRESH).map(([mq, s]) => ({ mq, s }));
+      return bestFirst(ok, now).map((x) => x.mq);
+    };
+    const heard = (e, mq) => {
+      const now = performance.now();
+      const s = e.paths.get(mq);
+      if (s) s.heard = now; else e.paths.set(mq, { heard: now, rtt: null });
+      e.seen = now;
     };
     const post = (e, obj, all) => {
       const r = routes(e);
@@ -146,8 +199,13 @@
           e.conn = {
             relay: true,
             send(msg) {
-              // Zustand höchstens ~15x pro Sekunde über den Server schicken (spart Daten); er wird laufend ersetzt
-              if (msg.t === 's') { const now = performance.now(); if (now - lastS < 66) return; lastS = now; e.chan.send(msg, true); return; }
+              // Zustand über einen Server höchstens ~15x pro Sekunde (spart Daten); er wird laufend ersetzt.
+              // Über den Direktweg geht jeder Zustand raus (flüssiger, kein Server dazwischen).
+              if (msg.t === 's') {
+                const now = performance.now(), r = routes(e);
+                if (!(r[0] && r[0].direct) && now - lastS < STATE_GAP) return;
+                lastS = now; e.chan.send(msg, true); return;
+              }
               e.chan.send(msg);
             },
             close() { post(e, { k: 'bye' }, true); },
@@ -155,13 +213,15 @@
           conns.set(m.f, e);
           sim.onConnect(e.conn);
         }
-        e.paths.set(mq, performance.now()); e.seen = performance.now();
+        heard(e, mq);
         mq.pub(e.to, { k: 'ok' });
         return;
       }
       if (!e) return;
-      e.paths.set(mq, performance.now()); e.seen = performance.now();
+      heard(e, mq);
       if (m.k === 'r') e.chan.recv(m.r);
+      else if (m.k === 'p') { if (typeof m.t === 'number') mq.pub(e.to, { k: 'q', t: m.t }); } // Laufzeitmessung des Mitspielers
+      else if (m.k === 'q') { if (typeof m.t === 'number') addRtt(e.paths.get(mq), performance.now() - m.t); }
       else if (m.k === 'bye') { conns.delete(m.f); sim.onDisconnect(e.conn); }
     };
     const start = (url) => {
@@ -183,19 +243,32 @@
     for (const url of list) start(url);
     // Nachschicken / Bestätigen
     const ticker = setInterval(() => { for (const [, e] of conns) e.chan.tick(); }, TICK_MS);
-    // Herzschlag an alle Mitspieler (über jeden ihrer Wege) + tote Verbindungen aufräumen
+    // jede Sekunde: Herzschlag + Laufzeitmessung über jeden Weg zu jedem Mitspieler, tote Verbindungen aufräumen
     const timer = setInterval(() => {
       const now = performance.now();
       for (const [id, e] of conns) {
         if (now - e.seen > 15000) { conns.delete(id); sim.onDisconnect(e.conn); continue; }
-        for (const [mq, t] of e.paths) if (now - t > 30000 || !live.has(mq)) e.paths.delete(mq);
-        post(e, { k: 'p' }, true);
+        for (const [mq, s] of e.paths) if (now - s.heard > 30000 || !live.has(mq)) e.paths.delete(mq);
+        for (const mq of e.paths.keys()) mq.pub(e.to, { k: 'p', t: now });
       }
-    }, 4000);
+    }, PING_MS);
     return {
       close() { closed = true; clearInterval(timer); clearInterval(ticker); for (const [, e] of conns) e.conn.close(); for (const c of live) c.close(); },
-      // für Tests: Zustand der sicheren Kanäle
-      stats() { return [...conns.values()].map((e) => Object.assign({ unacked: e.chan.unacked, paths: routes(e).length }, e.chan.stats)); },
+      // Direktweg (WebRTC) zu einem Mitspieler ist offen: als zusätzlichen Weg nutzen
+      addDirect(dc) {
+        if (closed) { try { dc.close(); } catch (e) { /* egal */ } return false; }
+        const d = new Direct(dc, null, () => live.delete(d));
+        d.onMsg = handle(d);
+        live.add(d);
+        return true;
+      },
+      // für Tests: Zustand der sicheren Kanäle; best = der Weg, über den gerade die Spielzustände gehen
+      stats() {
+        return [...conns.values()].map((e) => {
+          const r = routes(e), b = r[0];
+          return Object.assign({ unacked: e.chan.unacked, paths: r.length, best: b ? (b.direct ? 'direct' : b.url) : null }, e.chan.stats);
+        });
+      },
     };
   }
 
@@ -206,10 +279,11 @@
     const link = { send() {}, onmessage: null, onclose: null, close() {} };
     if (!KEY) { setTimeout(() => cb.onError && cb.onError('relay-unreachable'), 0); return { link, cancel() { cb.onError = null; } }; }
     const base = topicBase(code), me = rid(), list = brokers();
-    const paths = new Map(); // Server-Adresse -> { mq, ok, heard, everUp, fails }
-    let opened = false, done = false, lastHost = 0, beat = 0, watch = 0, ticker = 0, nBeat = 0;
+    const paths = new Map(); // Server-Adresse (bzw. 'direct') -> { mq, ok, heard, rtt, everUp, fails }
+    let opened = false, done = false, lastHost = 0, beat = 0, watch = 0, ticker = 0;
     const toHost = `${base}/h`;
-    const routes = () => [...paths.values()].filter((p) => p.mq && p.mq.ready && p.ok).sort((a, b) => b.heard - a.heard);
+    let cleanup = null; // räumt den Direktweg (PeerJS) mit auf
+    const routes = () => bestFirst([...paths.values()].filter((p) => p.mq && p.mq.ready && p.ok).map((p) => ({ p, s: p })), performance.now()).map((x) => x.p);
     const chan = new root.RELCHAN.Chan((fr, all) => {
       const r = routes();
       for (const p of all ? r : r.slice(0, 1)) p.mq.pub(toHost, { f: me, k: 'r', r: fr });
@@ -223,6 +297,7 @@
         try { p.mq.pub(toHost, { f: me, k: 'bye' }); } catch (e) { /* egal */ }
         const mq = p.mq; setTimeout(() => mq.close(), 50); // "bye" noch rausgehen lassen
       }
+      if (cleanup) setTimeout(cleanup, 60);
       if (opened) { if (link.onclose) link.onclose(err); } else if (cb.onError) cb.onError(err);
     };
     const open = () => {
@@ -239,11 +314,13 @@
       p.ok = true; // der Gastgeber hört uns über diesen Server
       if (!opened) open();
       if (m.k === 'r') chan.recv(m.r);
+      else if (m.k === 'p') { if (typeof m.t === 'number' && p.mq) p.mq.pub(toHost, { f: me, k: 'q', t: m.t }); } // Laufzeitmessung des Gastgebers
+      else if (m.k === 'q') { if (typeof m.t === 'number') addRtt(p, performance.now() - m.t); }
       else if (m.k === 'bye') finish('Der Gastgeber hat das Spiel geschlossen.');
     };
     const start = (url) => {
       if (done) return;
-      const p = paths.get(url) || { mq: null, ok: false, heard: 0, everUp: false, fails: 0 };
+      const p = paths.get(url) || { mq: null, ok: false, heard: 0, rtt: null, everUp: false, fails: 0 };
       paths.set(url, p);
       p.ok = false;
       const mq = new Mqtt(url, null, () => {
@@ -252,7 +329,7 @@
         if (done) return;
         p.fails++;
         // noch nie irgendein Server erreichbar -> aufgeben (dann versucht NET die Direktverbindung)
-        if (!opened && [...paths.values()].every((x) => !x.everUp && x.fails > 0) && paths.size === list.length) { finish('relay-unreachable'); return; }
+        if (!opened && [...paths.values()].every((x) => !x.everUp && x.fails > 0) && paths.size >= list.length) { finish('relay-unreachable'); return; }
         setTimeout(() => start(url), p.everUp ? 2000 : 6000);
       });
       mq.onMsg = onMsg(p);
@@ -264,17 +341,35 @@
       });
     };
     for (const url of list) start(url);
-    // jede Sekunde: auf Servern anklopfen, über die der Gastgeber (noch) nicht antwortet; alle 4 s Lebenszeichen
+    // jede Sekunde: auf Wegen anklopfen, über die der Gastgeber (noch) nicht antwortet, sonst Lebenszeichen + Laufzeitmessung
     beat = setInterval(() => {
-      nBeat++;
+      const now = performance.now();
       for (const p of paths.values()) {
         if (!p.mq || !p.mq.ready) continue;
         if (!p.ok) p.mq.pub(toHost, { f: me, k: 'hi' });
-        else if (nBeat % 4 === 0) p.mq.pub(toHost, { f: me, k: 'p' });
+        else p.mq.pub(toHost, { f: me, k: 'p', t: now });
       }
-    }, 1000);
-    return { link, cancel() { cb.onError = null; finish(); }, stats: () => Object.assign({ unacked: chan.unacked, paths: routes().length }, chan.stats) };
+    }, PING_MS);
+    // Direktweg (WebRTC) zum Gastgeber ist offen: zusätzlich nutzen
+    function addDirect(dc) {
+      if (done) { try { dc.close(); } catch (e) { /* egal */ } return false; }
+      const old = paths.get('direct');
+      if (old && old.mq) old.mq.close();
+      const p = { mq: null, ok: false, heard: 0, rtt: null, everUp: true, fails: 0 };
+      const d = new Direct(dc, onMsg(p), () => { if (paths.get('direct') === p) paths.delete('direct'); });
+      p.mq = d;
+      paths.set('direct', p);
+      d.pub(toHost, { f: me, k: 'hi' });
+      return true;
+    }
+    return {
+      link, addDirect, cancel() { cb.onError = null; finish(); },
+      // fn wird beim Beenden aufgerufen (z. B. PeerJS des Direktwegs schließen)
+      onEnd(fn) { if (done) setTimeout(fn, 0); else cleanup = fn; },
+      stats: () => { const b = routes()[0]; return Object.assign({ unacked: chan.unacked, paths: routes().length, best: b ? (b.mq.direct ? 'direct' : b.mq.url) : null }, chan.stats); },
+    };
   }
 
   root.RELAY = { host, join, setKey, hasKey: () => !!KEY };
-})(typeof self !== 'undefined' ? self : this);
+  if (typeof module !== 'undefined' && module.exports) module.exports = root.RELAY;
+})(typeof self !== 'undefined' ? self : globalThis);

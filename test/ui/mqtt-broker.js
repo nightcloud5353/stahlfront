@@ -1,6 +1,7 @@
 // Winziger MQTT-über-WebSocket-Server für die Browser-Tests (ersetzt den öffentlichen Internet-Server).
 // Kann genau das, was js/relay.js braucht: CONNECT, SUBSCRIBE (exakte Themen), PUBLISH (QoS 0), PING.
 // opts.drop(topic, n): true = diese Nachricht (n = laufende Nummer pro Thema) geht verloren – wie bei QoS 0.
+// opts.delay: Laufzeit in ms, um die jede Nachricht verzögert wird (langsamer, weit entfernter Server).
 // broker.refuse = true: neue Verbindungen werden abgewiesen (Server für diesen Teilnehmer nicht erreichbar).
 'use strict';
 const http = require('node:http');
@@ -81,7 +82,8 @@ function startBroker(opts) {
           const n = perTopic.get(topic) || 0; perTopic.set(topic, n + 1);
           if (o.drop && o.drop(topic, n)) { stats.lost++; continue; }
           const out = Buffer.from(whole);
-          for (const c of subs.get(topic) || []) c.send(out);
+          const deliver = () => { for (const c of subs.get(topic) || []) c.send(out); };
+          if (o.delay) setTimeout(deliver, o.delay); else deliver();
         } else if (type === 0xc0) client.send(Buffer.from([0xd0, 0]));
       }
     }
