@@ -1,5 +1,7 @@
 // Winziger MQTT-über-WebSocket-Server für die Browser-Tests (ersetzt den öffentlichen Internet-Server).
 // Kann genau das, was js/relay.js braucht: CONNECT, SUBSCRIBE (exakte Themen), PUBLISH (QoS 0), PING.
+// opts.drop(topic, n): true = diese Nachricht (n = laufende Nummer pro Thema) geht verloren – wie bei QoS 0.
+// broker.refuse = true: neue Verbindungen werden abgewiesen (Server für diesen Teilnehmer nicht erreichbar).
 'use strict';
 const http = require('node:http');
 const crypto = require('node:crypto');
@@ -18,7 +20,9 @@ const mqttPacket = (type, body) => Buffer.concat([Buffer.from([type]), varint(bo
 function startBroker(opts) {
   const o = Object.assign({ maxPacket: Infinity }, opts);
   const subs = new Map(); // Thema -> Set(Client)
-  const stats = { published: 0, biggest: 0, dropped: 0 };
+  const stats = { published: 0, biggest: 0, dropped: 0, lost: 0 };
+  const perTopic = new Map();
+  const state = { refuse: false };
   const srv = http.createServer((q, r) => { r.writeHead(426); r.end(); });
   srv.on('upgrade', (req, sock) => {
     const accept = crypto.createHash('sha1').update(req.headers['sec-websocket-key'] + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
@@ -59,7 +63,10 @@ function startBroker(opts) {
         if (b.length < i + len) return b;
         const type = b[0] & 0xf0, body = b.subarray(i, i + len), whole = b.subarray(0, i + len);
         b = b.subarray(i + len);
-        if (type === 0x10) client.send(mqttPacket(0x20, Buffer.from([0, 0])));
+        if (type === 0x10) {
+          if (state.refuse) { sock.destroy(); return b; }
+          client.send(mqttPacket(0x20, Buffer.from([0, 0])));
+        }
         else if (type === 0x80) {
           const tl = body.readUInt16BE(2), topic = body.subarray(4, 4 + tl).toString();
           client.topics.add(topic);
@@ -71,6 +78,8 @@ function startBroker(opts) {
           stats.published++;
           stats.biggest = Math.max(stats.biggest, whole.length);
           if (whole.length > o.maxPacket) { stats.dropped++; continue; } // wie ein öffentlicher Server mit Größenlimit
+          const n = perTopic.get(topic) || 0; perTopic.set(topic, n + 1);
+          if (o.drop && o.drop(topic, n)) { stats.lost++; continue; }
           const out = Buffer.from(whole);
           for (const c of subs.get(topic) || []) c.send(out);
         } else if (type === 0xc0) client.send(Buffer.from([0xd0, 0]));
@@ -79,6 +88,7 @@ function startBroker(opts) {
   });
   return new Promise((resolve) => srv.listen(0, '127.0.0.1', () => resolve({
     url: `ws://127.0.0.1:${srv.address().port}`, stats,
+    get refuse() { return state.refuse; }, set refuse(v) { state.refuse = !!v; },
     // Verbindungen trennen, die ein Thema mit dieser Endung abonniert haben (z. B. '/h' = Gastgeber)
     kick(suffix) {
       const hit = new Set();

@@ -97,3 +97,83 @@ test('Über den Internet-Server: Mitspieler kommt ins Gefecht, auch nachdem der 
     await browser.close(); broker.close(); srv.close();
   }
 });
+
+// Zwei Browser über (nachgebaute) Internet-Server. relays: Liste der Server-Adressen
+async function netPair(relays, fn) {
+  const srv = await serve();
+  const browser = await chromium.launch();
+  try {
+    const base = `http://127.0.0.1:${srv.address().port}/?test&noDirect&relay=${relays.join(',')}`;
+    const pw = passwordStorage();
+    const open = async (name) => {
+      const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+      await ctx.addInitScript((s) => { for (const [k, v] of Object.entries(s)) localStorage.setItem(k, v); }, Object.assign({ sf_name: name }, pw));
+      await ctx.route((u) => u.hostname !== '127.0.0.1', (r) => r.abort());
+      const p = await ctx.newPage();
+      p.errors = [];
+      p.on('pageerror', (e) => p.errors.push(e.message));
+      await p.goto(base);
+      await p.waitForSelector('#menu:not(.hidden)');
+      return p;
+    };
+    await fn(open);
+  } finally {
+    await browser.close(); srv.close();
+  }
+}
+async function hostRoom(open) {
+  const host = await open('Host');
+  await host.click('#btnHost');
+  await host.waitForSelector('#lobby:not(.hidden)', { timeout: 15000 });
+  return { host, code: await host.evaluate(() => location.hash.slice(1)) };
+}
+
+test('Gastgeber nur über den zweiten Internet-Server erreichbar: Mitspieler kommt trotzdem sofort in die Lobby', async () => {
+  const a = await startBroker(), b = await startBroker();
+  try {
+    await netPair([a.url, b.url], async (open) => {
+      const { host, code } = await hostRoom(open);
+      // Verbindung des Gastgebers zu Server A reißt ab und A lässt ihn vorerst nicht wieder rein
+      a.refuse = true;
+      assert.ok(a.kick('/h') >= 1);
+      await host.waitForTimeout(2600); // Neuverbindungsversuch scheitert -> nächster erst in einigen Sekunden
+      a.refuse = false;
+      const guest = await open('Gast');
+      await guest.fill('#code', code);
+      await guest.click('#btnJoin');
+      // vorher: Mitspieler klopfte nur bei Server A an (der erste erreichbare) -> niemand antwortete
+      await guest.waitForSelector('#lobby:not(.hidden)', { timeout: 5000 });
+      await host.waitForFunction(() => document.querySelectorAll('#plist li').length >= 2);
+      assert.deepEqual(host.errors, []);
+      assert.deepEqual(guest.errors, []);
+    });
+  } finally { a.close(); b.close(); }
+});
+
+test('Internet-Server verliert jede dritte Nachricht: Beitreten, Eingaben und Spielstart klappen trotzdem', async () => {
+  // jede dritte Nachricht pro Thema geht verloren (in beide Richtungen)
+  const broker = await startBroker({ drop: (topic, n) => n % 3 === 2 });
+  try {
+    await netPair([broker.url], async (open) => {
+      const { host, code } = await hostRoom(open);
+      const guest = await open('Gast');
+      await guest.fill('#code', code);
+      await guest.click('#btnJoin');
+      await guest.waitForSelector('#lobby:not(.hidden)', { timeout: 10000 });
+      const gid = await guest.evaluate(() => window.__sfTest.myId);
+      assert.ok(gid, 'Mitspieler kennt seine Spieler-Nummer (sonst ist er nie dran und kann nicht zielen)');
+      // viele Eingaben hintereinander: die letzte muss beim Gastgeber ankommen
+      await guest.evaluate(() => { for (const camo of ['wueste', 'winter', 'oliv', 'nacht', 'wueste', 'winter']) window.__sfTest.send({ t: 'look', camo, hat: 'helm' }); });
+      await host.waitForFunction((id) => { const p = window.__sfTest.hostSim.players.get(id); return p && p.look.camo === 'winter'; }, gid, { timeout: 5000 });
+      await host.click('#btnStart');
+      await host.waitForSelector('#hud:not(.hidden)', { timeout: 10000 });
+      await guest.waitForSelector('#hud:not(.hidden)', { timeout: 10000 });
+      const same = await guest.evaluate(() => window.__sfTest.guestMask());
+      const hostMask = await host.evaluate(() => Array.from(window.__sfTest.hostSim.mask));
+      assert.ok(same.length === hostMask.length && same.every((v, i) => v === hostMask[i]), 'gleiches Gelände');
+      assert.ok(broker.stats.lost > 5, 'es gingen wirklich Nachrichten verloren');
+      assert.deepEqual(host.errors, []);
+      assert.deepEqual(guest.errors, []);
+    });
+  } finally { broker.close(); }
+});
