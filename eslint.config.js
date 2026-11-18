@@ -11,7 +11,7 @@ module.exports = [
       globals: {
         ...globals.browser, module: 'readonly', Peer: 'readonly',
         // von den einzelnen Skripten auf window abgelegt
-        SHARED: 'readonly', SimBase: 'readonly', StahlSim: 'readonly', NET: 'readonly', RELAY: 'readonly', SND: 'readonly', TANKART: 'readonly',
+        SHARED: 'readonly', SimBase: 'readonly', StahlSim: 'readonly', NET: 'readonly', RELAY: 'readonly', RELCHAN: 'readonly', SND: 'readonly', TANKART: 'readonly',
       },
     },
     rules: {

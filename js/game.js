@@ -2124,6 +2124,9 @@
       get myLook() { return myLook; },
       get inGame() { return !!G; },
       guestMask: () => (G ? Array.from(G.mask) : []),
+      // echter Gastgeber (über den Internet-Server): seine Simulation
+      get hostSim() { return hostHandle ? hostHandle.sim : null; },
+      get myId() { return myId; },
     };
   }
 })();
