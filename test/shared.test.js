@@ -47,3 +47,18 @@ test('Sim-Klasse: alle Teile sind eingemischt', () => {
   for (const m of ['genTerrain', 'carve', 'landslide', 'spawnTanks', 'updateTank', 'useWeapon', 'explode', 'botPlan', 'botThink'])
     assert.equal(typeof Sim.prototype[m], 'function', m);
 });
+
+test('snapGap: ungleichmäßig ankommende Spielzustände -> gleichmäßige Glättung (kein Ruckeln)', () => {
+  // Zustände alle 66 ms, aber über das Internet paarweise gebündelt: 10 ms, 122 ms, 10 ms, 122 ms …
+  let gap = 50;
+  for (let i = 0; i < 40; i++) gap = S.snapGap(gap, i % 2 ? 122 : 10);
+  assert.ok(gap > 45 && gap < 90, 'geglätteter Abstand ~66 ms statt 10 oder 122: ' + gap);
+  // einzelner Ausreißer (kurz kein Netz) bremst die Glättung nur wenig
+  const before = gap;
+  gap = S.snapGap(gap, 3000);
+  assert.ok(gap <= 220 && gap - before < 60, 'Ausreißer begrenzt: ' + gap);
+  // Takt ändert sich dauerhaft (Gastgeber schickt schneller) -> folgt nach wenigen Zuständen
+  for (let i = 0; i < 12; i++) gap = S.snapGap(gap, 33);
+  assert.ok(gap < 40, 'passt sich an: ' + gap);
+  assert.equal(S.snapGap(16, 0), 16); // nie unter 16 ms
+});

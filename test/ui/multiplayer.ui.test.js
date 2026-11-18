@@ -177,3 +177,97 @@ test('Internet-Server verliert jede dritte Nachricht: Beitreten, Eingaben und Sp
     });
   } finally { broker.close(); }
 });
+
+// ---------- Direktweg zusätzlich zum Internet-Server (gegen Lag) ----------
+test('Mitspieler öffnet zusätzlich den Direktweg: Spiel läuft danach darüber, ohne Fehler', async () => {
+  const broker = await startBroker({ delay: 40 });
+  const srv = await serve();
+  const browser = await chromium.launch();
+  try {
+    const ctx = await browser.newContext();
+    await ctx.addInitScript((s) => { for (const [k, v] of Object.entries(s)) localStorage.setItem(k, v); }, passwordStorage());
+    await ctx.route((u) => u.hostname !== '127.0.0.1', (r) => r.abort());
+    const page = await ctx.newPage();
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.goto(`http://127.0.0.1:${srv.address().port}/?relay=${broker.url}`);
+    await page.waitForSelector('#menu:not(.hidden)');
+    // Gastgeber und Mitspieler in derselben Seite; PeerJS durch einen Nachbau ohne Vermittlungsserver ersetzt
+    await page.evaluate(() => {
+      const reg = new Map();
+      const ev = (o) => { o.h = {}; o.on = (e, f) => { (o.h[e] = o.h[e] || []).push(f); }; o.emit = (e, x) => { for (const f of o.h[e] || []) f(x); }; return o; };
+      const dc = (meta) => ev({
+        open: false, metadata: meta,
+        send(b) { const o = this.other, c = new Uint8Array(b).buffer; if (this.open) setTimeout(() => o.open && o.emit('data', c), 1); },
+        close() { if (!this.open) return; this.open = false; this.emit('close'); this.other.close(); },
+      });
+      window.Peer = class {
+        constructor(id) { ev(this); this.id = id || 'p' + Math.random(); reg.set(this.id, this); setTimeout(() => this.emit('open', this.id), 5); }
+        connect(id, opts) {
+          const a = dc(opts.metadata), b = dc(opts.metadata); a.other = b; b.other = a;
+          const target = reg.get(id);
+          setTimeout(() => {
+            if (!target) { this.emit('error', { type: 'peer-unavailable' }); return; }
+            target.emit('connection', b);
+            setTimeout(() => { a.open = b.open = true; b.emit('open'); a.emit('open'); }, 5);
+          }, 5);
+          return a;
+        }
+        destroy() { this.destroyed = true; reg.delete(this.id); }
+        reconnect() {}
+      };
+      window.__t = { got: [] };
+      window.__t.h = window.NET.host({ onReady: (code) => {
+        window.__t.code = code;
+        window.NET.join(code, { onReady: (c, l) => { window.__t.link = l; l.onmessage = (m) => window.__t.got.push(m); } });
+      } });
+    });
+    await page.waitForFunction(() => window.__t.link, null, { timeout: 10000 });
+    // Direktweg steht und ist der schnellste -> Gastgeber schickt darüber
+    await page.waitForFunction(() => { const s = window.__t.h.stats(); return s.length === 1 && s[0].best === 'direct'; }, null, { timeout: 8000 });
+    // Beitreten über den Weg klappt (Antwort kommt an)
+    await page.evaluate(() => window.__t.link.send({ t: 'join', name: 'Gast' }));
+    await page.waitForFunction(() => window.__t.got.some((m) => m.t === 'welcome'), null, { timeout: 5000 });
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser.close(); broker.close(); srv.close();
+  }
+});
+
+test('Direktweg nicht möglich (kein Vermittlungsserver erreichbar): Mitspieler kommt trotzdem ins Gefecht, ohne Fehler', async () => {
+  const broker = await startBroker();
+  const srv = await serve();
+  const browser = await chromium.launch();
+  try {
+    // ohne noDirect: der Mitspieler versucht zusätzlich den Direktweg, der aber blockiert ist
+    const base = `http://127.0.0.1:${srv.address().port}/?test&relay=${broker.url}`;
+    const pw = passwordStorage();
+    const open = async (name) => {
+      const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+      await ctx.addInitScript((s) => { for (const [k, v] of Object.entries(s)) localStorage.setItem(k, v); }, Object.assign({ sf_name: name }, pw));
+      await ctx.route((u) => u.hostname !== '127.0.0.1', (r) => r.abort());
+      const p = await ctx.newPage();
+      p.errors = [];
+      p.on('pageerror', (e) => p.errors.push(e.message));
+      await p.goto(base);
+      await p.waitForSelector('#menu:not(.hidden)');
+      return p;
+    };
+    const host = await open('Host');
+    await host.click('#btnHost');
+    await host.waitForSelector('#lobby:not(.hidden)', { timeout: 15000 });
+    const code = await host.evaluate(() => location.hash.slice(1));
+    const guest = await open('Gast');
+    await guest.fill('#code', code);
+    await guest.click('#btnJoin');
+    await guest.waitForSelector('#lobby:not(.hidden)', { timeout: 15000 });
+    await host.waitForFunction(() => document.querySelectorAll('#plist li').length >= 2);
+    await host.click('#btnStart');
+    await host.waitForSelector('#hud:not(.hidden)', { timeout: 10000 });
+    await guest.waitForSelector('#hud:not(.hidden)', { timeout: 10000 });
+    assert.deepEqual(host.errors, []);
+    assert.deepEqual(guest.errors, []);
+  } finally {
+    await browser.close(); broker.close(); srv.close();
+  }
+});

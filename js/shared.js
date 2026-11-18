@@ -155,8 +155,17 @@
     return s;
   }
 
+  // Abstand zwischen zwei Spielzuständen beim Mitspieler, über den die Bewegung geglättet wird (ms).
+  // Über das Internet kommen Zustände ungleichmäßig an (mal zwei fast gleichzeitig, dann eine Lücke).
+  // Früher galt nur der letzte Abstand: nach zwei dicht aufeinander folgenden Zuständen sprang der Panzer
+  // in 16 ms ans Ziel und stand dann still (Ruckeln). Jetzt: gleitender Mittelwert der Abstände.
+  function snapGap(prev, measured) {
+    const m = Math.min(220, Math.max(16, measured));
+    return Math.min(220, Math.max(16, prev * 0.75 + m * 0.25));
+  }
+
   return {
-    randomId,
+    randomId, snapGap,
     WEAPONS, CALLSIGNS, LINES, TEAM_COLORS, TEAM_NAMES, THEMES, MAPS, CAMOS, HATS, BOT_LEVELS, BOT_NAMES, PHYS,
     TANK_R: 10, W: 2000, H: 1000, MAX_PLAYERS: 6, PEER_PREFIX: 'stahlfront-v1-',
   };

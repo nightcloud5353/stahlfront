@@ -888,7 +888,7 @@
     const objs = new Map();
     for (const a of m.o || []) objs.set(a[0], { id: a[0], kind: a[1], x: a[2], y: a[3], chute: a[4] === 1 });
     const now = performance.now();
-    if (snapCur) snapInt = clamp(now - snapAt, 16, 220);
+    if (snapCur) snapInt = S.snapGap(snapInt, now - snapAt);
     snapPrev = snapCur;
     const fires = (m.f || []).map((a) => ({ id: a[0], x: a[1], y: a[2], life: a[3] }));
     snapCur = { m, tanks, proj, objs, fires };

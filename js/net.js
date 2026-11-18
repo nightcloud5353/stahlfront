@@ -75,6 +75,11 @@
       peer = new root.Peer(S.PEER_PREFIX + code, peerOptions());
       peer.on('open', fireReady);
       peer.on('connection', (dc) => {
+        // Mitspieler ist schon über den Internet-Server da und öffnet zusätzlich den schnellen Direktweg
+        if (dc.metadata && dc.metadata.sf === 'up') {
+          dc.on('open', () => { if (!relay || !relay.addDirect || !relay.addDirect(dc)) { try { dc.close(); } catch (e) { /* weg */ } } });
+          return;
+        }
         const conn = {
           send(m) { try { if (dc.open) dc.send(m); } catch (e) { /* weg */ } },
           close() { try { dc.close(); } catch (e) { /* weg */ } },
@@ -105,7 +110,8 @@
       });
     }
     attempt();
-    return { sim, link, getCode: () => code };
+    // stats: Zustand der Verbindungen über den Internet-Server/Direktweg (für Tests)
+    return { sim, link, getCode: () => code, stats: () => (relay && relay.stats ? relay.stats() : []) };
   }
 
   // ---------- Mitspieler: Direktverbindung (Notlösung) ----------
@@ -140,6 +146,26 @@
     return { link, cancel() { cb.onError = null; cb.onReady = null; closed = true; try { peer.destroy(); } catch (e) { /* egal */ } } };
   }
 
+  // ---------- Mitspieler: Direktweg zusätzlich zum Internet-Server ----------
+  // Läuft das Spiel über den Internet-Server, wird im Hintergrund eine Direktverbindung zum Gastgeber
+  // aufgebaut. Klappt sie (z. B. alle im selben WLAN/Hotspot), läuft alles darüber – viel weniger Verzögerung.
+  // Klappt sie nicht, ändert sich nichts. Der sichere Kanal (reliable.js) nutzt beide Wege gleichzeitig.
+  function upgrade(code, rj) {
+    let peer = null, gone = false;
+    const end = () => { if (gone) return; gone = true; try { if (peer) peer.destroy(); } catch (e) { /* egal */ } };
+    try { peer = new root.Peer(undefined, peerOptions()); } catch (e) { return; }
+    rj.onEnd(end);
+    peer.on('open', () => {
+      if (gone) return;
+      const dc = peer.connect(S.PEER_PREFIX + code, { reliable: false, serialization: 'raw', metadata: { sf: 'up' } });
+      if (!dc) return;
+      dc.on('open', () => { if (gone || !rj.addDirect(dc)) end(); });
+    });
+    peer.on('error', () => { /* Direktweg ist nur eine Zugabe */ });
+    // Vermittlungsserver nur für den Aufbau nötig; bricht er weg, bleibt der Datenkanal bestehen
+    peer.on('disconnected', () => {});
+  }
+
   // ---------- Mitspieler: erst Internet-Server, nach 6 s zusätzlich die Direktverbindung ----------
   function join(rawCode, cb) {
     const code = normCode(rawCode);
@@ -151,6 +177,7 @@
       settled = true; stop();
       if (rj && rj.link !== l) rj.cancel();
       if (dj && dj.link !== l) dj.cancel();
+      if (rj && rj.link === l && rj.addDirect && !q.has('noDirect') && root.Peer) upgrade(c, rj);
       if (cb.onReady) cb.onReady(c, l);
     };
     const lose = (msg) => {
